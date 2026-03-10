@@ -18,10 +18,12 @@ import {
   Trash2,
   Cpu,
   LayoutDashboard,
+  Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settings';
 import { useChatStore } from '@/stores/chat';
+import { useAgentsStore } from '@/stores/agents';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -138,9 +140,19 @@ export function Sidebar() {
     }
   };
 
-  const { t } = useTranslation(['common', 'chat']);
+  const { t } = useTranslation(['common', 'chat', 'agents']);
   const [sessionToDelete, setSessionToDelete] = useState<{ key: string; label: string } | null>(null);
   const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
+
+  const agents = useAgentsStore((s) => s.agents);
+  const currentAgentId = useAgentsStore((s) => s.currentAgentId);
+  const isMultiAgent = agents.length > 1;
+  const currentAgent = agents.find((a) => a.id === currentAgentId);
+
+  // Filter sessions to current agent when multi-agent is active
+  const filteredSessions = isMultiAgent
+    ? sessions.filter((s) => s.key.startsWith(`agent:${currentAgentId}:`))
+    : sessions;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -161,7 +173,7 @@ export function Sidebar() {
     (typeof sessionBuckets)[number]
   >;
 
-  for (const session of [...sessions].sort((a, b) =>
+  for (const session of [...filteredSessions].sort((a, b) =>
     (sessionLastActivity[b.key] ?? 0) - (sessionLastActivity[a.key] ?? 0)
   )) {
     const bucketKey = getSessionBucket(sessionLastActivity[session.key] ?? 0, nowMs);
@@ -174,6 +186,7 @@ export function Sidebar() {
     { to: '/skills', icon: <Puzzle className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.skills') },
     { to: '/cron', icon: <Clock className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.cronTasks') },
     { to: '/dashboard', icon: <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.dashboard') },
+    { to: '/agents', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.agents') },
   ];
 
   return (
@@ -237,8 +250,15 @@ export function Sidebar() {
       </nav>
 
       {/* Session list — below Settings, only when expanded */}
-      {!sidebarCollapsed && sessions.length > 0 && (
+      {!sidebarCollapsed && filteredSessions.length > 0 && (
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-2 mt-4 space-y-0.5 pb-2">
+          {/* Current agent indicator for multi-agent mode */}
+          {isMultiAgent && currentAgent && (
+            <div className="px-2.5 pb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/60">
+              <Bot className="h-3 w-3" />
+              <span className="truncate">{currentAgent.name}</span>
+            </div>
+          )}
           {sessionBuckets.map((bucket) => (
             bucket.sessions.length > 0 ? (
               <div key={bucket.key} className="pt-2">

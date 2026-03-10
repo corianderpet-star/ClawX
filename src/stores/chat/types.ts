@@ -76,6 +76,8 @@ export interface ChatState {
   // Sessions
   sessions: ChatSession[];
   currentSessionKey: string;
+  /** Active agent ID extracted from currentSessionKey */
+  currentAgentId: string;
   /** First user message text per session key, used as display label */
   sessionLabels: Record<string, string>;
   /** Last message timestamp (ms) per session key, used for sorting */
@@ -88,6 +90,8 @@ export interface ChatState {
   // Actions
   loadSessions: () => Promise<void>;
   switchSession: (key: string) => void;
+  /** Switch the active agent — resets session to agent's default and reloads */
+  switchAgent: (agentId: string) => void;
   newSession: () => void;
   deleteSession: (key: string) => Promise<void>;
   cleanupEmptySession: () => void;
@@ -111,3 +115,20 @@ export interface ChatState {
 
 export const DEFAULT_CANONICAL_PREFIX = 'agent:main';
 export const DEFAULT_SESSION_KEY = `${DEFAULT_CANONICAL_PREFIX}:main`;
+
+/** Build a canonical prefix for any agent */
+export function agentPrefix(agentId: string): string {
+  return `agent:${agentId}`;
+}
+
+/** Build the default session key for any agent */
+export function agentDefaultSession(agentId: string): string {
+  return `agent:${agentId}:main`;
+}
+
+/** Extract agent ID from session key */
+export function agentIdFromSessionKey(sessionKey: string): string {
+  if (!sessionKey.startsWith('agent:')) return 'main';
+  const parts = sessionKey.split(':');
+  return parts.length >= 2 ? parts[1] : 'main';
+}

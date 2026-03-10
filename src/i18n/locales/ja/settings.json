@@ -277,6 +277,7 @@
       "channels": "{{count}} 個のチャンネル設定",
       "skills": "{{count}} 個のスキル",
       "chatSessions": "{{count}} 件のチャット履歴",
+      "agents": "{{count}} 個のエージェント",
       "settings": "アプリ設定",
       "backgroundImage": "背景画像"
     },
@@ -287,6 +288,7 @@
       "openclawAuth": "認証情報をエクスポート中...",
       "skills": "スキルをエクスポート中...",
       "chatSessions": "チャット履歴をエクスポート中...",
+      "agents": "エージェントをエクスポート中...",
       "backgroundImage": "背景画像をエクスポート中..."
     }
   },

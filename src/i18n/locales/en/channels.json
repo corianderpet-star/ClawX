@@ -12,6 +12,7 @@
   "available": "Available Channels",
   "availableDesc": "Connect a new channel",
   "supported": "Supported Channels",
+  "configured": "Configured",
   "supportedDesc": "View all connectable channel types",
   "configured": "Configured Channels",
   "configuredDesc": "Manage channels that are already configured",
@@ -56,7 +57,16 @@
     "generateQRCode": "Generate QR Code",
     "updateAndReconnect": "Update & Reconnect",
     "saveAndConnect": "Save & Connect",
-    "envVar": "Environment Variable: {{var}}"
+    "envVar": "Environment Variable: {{var}}",
+    "boundAgent": "Bound Agent",
+    "selectAgent": "Select Agent",
+    "selectAgentDesc": "Choose which agent handles messages from this channel",
+    "defaultAgent": "Default (Main)",
+    "agentBound": "Agent: {{name}}",
+    "addAccountTitle": "Add {{name}} Account",
+    "accountId": "Account ID",
+    "accountIdDesc": "Unique identifier for this instance. Use different IDs to run multiple bots of the same type.",
+    "accountIdPlaceholder": "e.g. bot1, novel-bot"
   },
   "meta": {
     "telegram": {

@@ -56,7 +56,16 @@
     "generateQRCode": "生成二维码",
     "updateAndReconnect": "更新并重新连接",
     "saveAndConnect": "保存并连接",
-    "envVar": "环境变量: {{var}}"
+    "envVar": "环境变量: {{var}}",
+    "boundAgent": "绑定 Agent",
+    "selectAgent": "选择 Agent",
+    "selectAgentDesc": "选择由哪个 Agent 来处理此频道的消息",
+    "defaultAgent": "默认（主 Agent）",
+    "agentBound": "Agent: {{name}}",
+    "addAccountTitle": "添加 {{name}} 账号",
+    "accountId": "账号 ID",
+    "accountIdDesc": "此实例的唯一标识。使用不同 ID 来运行同一类型的多个机器人。",
+    "accountIdPlaceholder": "例如 bot1, novel-bot"
   },
   "meta": {
     "telegram": {

@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { hostApiFetch } from '@/lib/host-api';
 import { useGatewayStore } from './gateway';
+import { useAgentsStore } from './agents';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ interface ChatState {
   // Sessions
   sessions: ChatSession[];
   currentSessionKey: string;
+  currentAgentId: string;
   /** First user message text per session key, used as display label */
   sessionLabels: Record<string, string>;
   /** Last message timestamp (ms) per session key, used for sorting */
@@ -99,6 +101,7 @@ interface ChatState {
   // Actions
   loadSessions: () => Promise<void>;
   switchSession: (key: string) => void;
+  switchAgent: (agentId: string) => void;
   newSession: () => void;
   deleteSession: (key: string) => Promise<void>;
   cleanupEmptySession: () => void;
@@ -923,6 +926,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sessions: [],
   currentSessionKey: DEFAULT_SESSION_KEY,
+  currentAgentId: 'main',
   sessionLabels: {},
   sessionLastActivity: {},
 
@@ -1057,6 +1061,55 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ),
       } : {}),
     }));
+    get().loadHistory();
+  },
+
+  // ── Switch agent ──
+
+  switchAgent: (agentId: string) => {
+    const { currentSessionKey, messages, sessions } = get();
+    const leavingEmpty = !currentSessionKey.endsWith(':main') && messages.length === 0;
+
+    // Find an existing session for this agent, or create the default one
+    const agentSessionKeyPrefix = `agent:${agentId}`;
+    const existingSession = sessions.find((s) => s.key.startsWith(agentSessionKeyPrefix + ':'));
+    const targetSessionKey = existingSession?.key ?? `agent:${agentId}:main`;
+
+    // If target session doesn't exist yet, add it to the list
+    const sessionsWithTarget = sessions.some((s) => s.key === targetSessionKey)
+      ? sessions
+      : [...sessions, { key: targetSessionKey, displayName: targetSessionKey }];
+
+    set((s) => ({
+      currentSessionKey: targetSessionKey,
+      currentAgentId: agentId,
+      messages: [],
+      streamingText: '',
+      streamingMessage: null,
+      streamingTools: [],
+      activeRunId: null,
+      error: null,
+      pendingFinal: false,
+      lastUserMessageAt: null,
+      pendingToolImages: [],
+      sessions: leavingEmpty
+        ? sessionsWithTarget.filter((sess) => sess.key !== currentSessionKey)
+        : sessionsWithTarget,
+      ...(leavingEmpty ? {
+        sessionLabels: Object.fromEntries(
+          Object.entries(s.sessionLabels).filter(([k]) => k !== currentSessionKey),
+        ),
+        sessionLastActivity: Object.fromEntries(
+          Object.entries(s.sessionLastActivity).filter(([k]) => k !== currentSessionKey),
+        ),
+      } : {}),
+    }));
+
+    // Sync to agents store so UI components reading from it update
+    useAgentsStore.getState().setCurrentAgent(agentId);
+
+    // Reload sessions & history for the new agent
+    get().loadSessions();
     get().loadHistory();
   },
 

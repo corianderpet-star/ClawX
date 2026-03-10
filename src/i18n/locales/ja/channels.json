@@ -54,7 +54,16 @@
     "generateQRCode": "QRコードを生成",
     "updateAndReconnect": "更新して再接続",
     "saveAndConnect": "保存して接続",
-    "envVar": "環境変数: {{var}}"
+    "envVar": "環境変数: {{var}}",
+    "boundAgent": "バインドエージェント",
+    "selectAgent": "エージェントを選択",
+    "selectAgentDesc": "このチャンネルのメッセージを処理するエージェントを選択",
+    "defaultAgent": "デフォルト（メイン）",
+    "agentBound": "エージェント: {{name}}",
+    "addAccountTitle": "{{name}} アカウントを追加",
+    "accountId": "アカウントID",
+    "accountIdDesc": "このインスタンスの一意の識別子。異なるIDを使用して同じタイプの複数のボットを実行できます。",
+    "accountIdPlaceholder": "例: bot1, novel-bot"
   },
   "meta": {
     "telegram": {

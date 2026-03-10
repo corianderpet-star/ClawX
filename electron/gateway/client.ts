@@ -330,4 +330,20 @@ export class GatewayClient {
   async installBundle(bundleId: string): Promise<void> {
     return this.manager.rpc<void>('skills.installBundle', { bundleId });
   }
+
+  // ==================== Agent Methods ====================
+
+  /**
+   * List all configured agents
+   */
+  async listAgents(): Promise<unknown[]> {
+    return this.manager.rpc<unknown[]>('agents.list');
+  }
+
+  /**
+   * Get agent by ID
+   */
+  async getAgent(agentId: string): Promise<unknown> {
+    return this.manager.rpc<unknown>('agents.get', { agentId });
+  }
 }

@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Loader2, Sparkles } from 'lucide-react';
 import { useChatStore, type RawMessage } from '@/stores/chat';
 import { useGatewayStore } from '@/stores/gateway';
+import { useAgentsStore } from '@/stores/agents';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
@@ -37,6 +38,8 @@ export function Chat() {
 
   const cleanupEmptySession = useChatStore((s) => s.cleanupEmptySession);
 
+  const loadAgents = useAgentsStore((s) => s.loadAgents);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [streamingTimestamp, setStreamingTimestamp] = useState<number>(0);
 
@@ -50,6 +53,7 @@ export function Chat() {
     let cancelled = false;
     const hasExistingMessages = useChatStore.getState().messages.length > 0;
     (async () => {
+      await loadAgents();
       await loadSessions();
       if (cancelled) return;
       await loadHistory(hasExistingMessages);
@@ -60,7 +64,7 @@ export function Chat() {
       // empty session so it doesn't linger as a ghost entry in the sidebar.
       cleanupEmptySession();
     };
-  }, [isGatewayRunning, loadHistory, loadSessions, cleanupEmptySession]);
+  }, [isGatewayRunning, loadHistory, loadSessions, loadAgents, cleanupEmptySession]);
 
   // Auto-scroll on new messages, streaming, or activity changes
   useEffect(() => {

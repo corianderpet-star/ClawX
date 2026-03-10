@@ -29,6 +29,8 @@ import {
   setChannelEnabled,
   validateChannelConfig,
   validateChannelCredentials,
+  getChannelBindings,
+  setChannelBinding,
 } from '../utils/channel-config';
 import { checkUvInstalled, installUv, setupManagedPython } from '../utils/uv-setup';
 import { updateSkillConfig, getSkillConfig, getAllSkillConfigs } from '../utils/skill-config';
@@ -52,6 +54,7 @@ import { validateApiKeyWithProvider } from '../services/providers/provider-valid
 import { appUpdater } from './updater';
 import { PORTS } from '../utils/config';
 import { exportBackup, importBackup, getBackupSummary, type ImportOptions, DEFAULT_IMPORT_OPTIONS, type BackupManifest } from '../utils/migration';
+import { createAgent, deleteAgent, listAgentsFromConfig, readAgentSoul, writeAgentSoul, type CreateAgentInput } from '../utils/agent-config';
 
 type AppRequest = {
   id?: string;
@@ -707,6 +710,87 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
             const settings = await getAllSettings();
             await handleProxySettingsChange();
             data = { success: true, settings };
+            break;
+          }
+          return {
+            id: request.id,
+            ok: false,
+            error: {
+              code: 'UNSUPPORTED',
+              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
+            },
+          };
+        }
+        case 'agent': {
+          if (request.action === 'list') {
+            data = await listAgentsFromConfig();
+            break;
+          }
+          if (request.action === 'create') {
+            const payload = request.payload as CreateAgentInput | undefined;
+            if (!payload || !payload.id) throw new Error('Invalid agent.create payload: id is required');
+            data = await createAgent(payload);
+            // Restart gateway to pick up the new agent
+            if (gatewayManager.getStatus().state === 'running') {
+              gatewayManager.restart().catch((err: unknown) => {
+                logger.warn('Failed to restart gateway after agent creation:', err);
+              });
+            }
+            break;
+          }
+          if (request.action === 'delete') {
+            const payload = request.payload as { agentId?: string; removeFiles?: boolean } | string | undefined;
+            const agentId = typeof payload === 'string' ? payload : payload?.agentId;
+            const removeFiles = typeof payload === 'object' && payload !== null ? payload.removeFiles ?? false : false;
+            if (!agentId) throw new Error('Invalid agent.delete payload: agentId is required');
+            await deleteAgent(agentId, removeFiles);
+            // Restart gateway to reflect the removal
+            if (gatewayManager.getStatus().state === 'running') {
+              gatewayManager.restart().catch((err: unknown) => {
+                logger.warn('Failed to restart gateway after agent deletion:', err);
+              });
+            }
+            data = { success: true };
+            break;
+          }
+          if (request.action === 'readSoul') {
+            const payload = request.payload as { agentId?: string } | string | undefined;
+            const agentId = typeof payload === 'string' ? payload : payload?.agentId;
+            if (!agentId) throw new Error('Invalid agent.readSoul payload: agentId is required');
+            const content = await readAgentSoul(agentId);
+            data = { content };
+            break;
+          }
+          if (request.action === 'writeSoul') {
+            const payload = request.payload as { agentId?: string; content?: string } | undefined;
+            if (!payload?.agentId) throw new Error('Invalid agent.writeSoul payload: agentId is required');
+            await writeAgentSoul(payload.agentId, payload.content || '');
+            data = { success: true };
+            break;
+          }
+          return {
+            id: request.id,
+            ok: false,
+            error: {
+              code: 'UNSUPPORTED',
+              message: `APP_REQUEST_UNSUPPORTED:${request.module}.${request.action}`,
+            },
+          };
+        }
+        case 'binding': {
+          if (request.action === 'list') {
+            data = await getChannelBindings();
+            break;
+          }
+          if (request.action === 'set') {
+            const payload = request.payload as { channelType?: string; agentId?: string | null; accountId?: string } | undefined;
+            if (!payload?.channelType) throw new Error('Invalid binding.set payload: channelType is required');
+            await setChannelBinding(payload.channelType, payload.agentId ?? null, payload.accountId);
+            // Reload gateway config to pick up the binding change (debounced to avoid cascading restarts)
+            if (gatewayManager.getStatus().state !== 'stopped') {
+              gatewayManager.debouncedReload();
+            }
+            data = { success: true };
             break;
           }
           return {
@@ -1477,9 +1561,9 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
   // ==================== Channel Configuration Handlers ====================
 
   // Save channel configuration
-  ipcMain.handle('channel:saveConfig', async (_, channelType: string, config: Record<string, unknown>) => {
+  ipcMain.handle('channel:saveConfig', async (_, channelType: string, config: Record<string, unknown>, accountId?: string) => {
     try {
-      logger.info('channel:saveConfig', { channelType, keys: Object.keys(config || {}) });
+      logger.info('channel:saveConfig', { channelType, accountId, keys: Object.keys(config || {}) });
       if (channelType === 'dingtalk') {
         const installResult = await ensureDingTalkPluginInstalled();
         if (!installResult.installed) {
@@ -1488,12 +1572,12 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
             error: installResult.warning || 'DingTalk plugin install failed',
           };
         }
-        await saveChannelConfig(channelType, config);
+        await saveChannelConfig(channelType, config, accountId);
         if (gatewayManager.getStatus().state !== 'stopped') {
-          logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType})`);
+          logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType}/${accountId || 'default'})`);
           gatewayManager.debouncedReload();
         } else {
-          logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType})`);
+          logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType}/${accountId || 'default'})`);
         }
         return {
           success: true,
@@ -1509,12 +1593,12 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
             error: installResult.warning || 'QQBot plugin install failed',
           };
         }
-        await saveChannelConfig(channelType, config);
+        await saveChannelConfig(channelType, config, accountId);
         if (gatewayManager.getStatus().state !== 'stopped') {
-          logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType})`);
+          logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType}/${accountId || 'default'})`);
           gatewayManager.debouncedReload();
         } else {
-          logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType})`);
+          logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType}/${accountId || 'default'})`);
         }
         return {
           success: true,
@@ -1522,12 +1606,12 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
           warning: installResult.warning,
         };
       }
-      await saveChannelConfig(channelType, config);
+      await saveChannelConfig(channelType, config, accountId);
       if (gatewayManager.getStatus().state !== 'stopped') {
-        logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType})`);
+        logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType}/${accountId || 'default'})`);
         gatewayManager.debouncedReload();
       } else {
-        logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType})`);
+        logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType}/${accountId || 'default'})`);
       }
       return { success: true };
     } catch (error) {
@@ -1548,9 +1632,9 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
   });
 
   // Get channel form values (reverse-transformed for UI pre-fill)
-  ipcMain.handle('channel:getFormValues', async (_, channelType: string) => {
+  ipcMain.handle('channel:getFormValues', async (_, channelType: string, accountId?: string) => {
     try {
-      const values = await getChannelFormValues(channelType);
+      const values = await getChannelFormValues(channelType, accountId);
       return { success: true, values };
     } catch (error) {
       console.error('Failed to get channel form values:', error);
@@ -1559,14 +1643,14 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
   });
 
   // Delete channel configuration
-  ipcMain.handle('channel:deleteConfig', async (_, channelType: string) => {
+  ipcMain.handle('channel:deleteConfig', async (_, channelType: string, accountId?: string) => {
     try {
-      await deleteChannelConfig(channelType);
+      await deleteChannelConfig(channelType, accountId);
       if (gatewayManager.getStatus().state !== 'stopped') {
-        logger.info(`Scheduling Gateway reload after channel:deleteConfig (${channelType})`);
+        logger.info(`Scheduling Gateway reload after channel:deleteConfig (${channelType}/${accountId || 'default'})`);
         gatewayManager.debouncedReload();
       } else {
-        logger.info(`Gateway is stopped; skip immediate reload after channel:deleteConfig (${channelType})`);
+        logger.info(`Gateway is stopped; skip immediate reload after channel:deleteConfig (${channelType}/${accountId || 'default'})`);
       }
       return { success: true };
     } catch (error) {
@@ -2733,6 +2817,7 @@ function registerMigrationHandlers(mainWindow: BrowserWindow): void {
         stats: {
           skills: manifest.skills.length,
           chatSessions: manifest.chatSessions.length,
+          agents: manifest.agents.length,
           hasProviders: !!manifest.providers,
           hasSettings: !!manifest.settings,
         },

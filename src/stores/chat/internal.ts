@@ -1,4 +1,4 @@
-import { DEFAULT_SESSION_KEY, type ChatState } from './types';
+import { DEFAULT_SESSION_KEY, agentIdFromSessionKey, type ChatState } from './types';
 import { createRuntimeActions } from './runtime-actions';
 import { createSessionHistoryActions } from './session-history-actions';
 import type { ChatGet, ChatSet } from './store-api';
@@ -18,6 +18,7 @@ export const initialChatState: Pick<
   | 'pendingToolImages'
   | 'sessions'
   | 'currentSessionKey'
+  | 'currentAgentId'
   | 'sessionLabels'
   | 'sessionLastActivity'
   | 'showThinking'
@@ -38,6 +39,7 @@ export const initialChatState: Pick<
 
   sessions: [],
   currentSessionKey: DEFAULT_SESSION_KEY,
+  currentAgentId: agentIdFromSessionKey(DEFAULT_SESSION_KEY),
   sessionLabels: {},
   sessionLastActivity: {},
 
@@ -52,6 +54,7 @@ export function createChatActions(
   ChatState,
   | 'loadSessions'
   | 'switchSession'
+  | 'switchAgent'
   | 'newSession'
   | 'deleteSession'
   | 'cleanupEmptySession'

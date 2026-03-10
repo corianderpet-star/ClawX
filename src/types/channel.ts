@@ -73,6 +73,8 @@ export interface ChannelMeta {
   configFields: ChannelConfigField[];
   instructions: string[];
   isPlugin?: boolean;
+  /** Whether this channel supports multiple accounts/instances */
+  supportsMultiAccount?: boolean;
 }
 
 /**
@@ -168,6 +170,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.dingtalk.instructions.3',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
   qqbot: {
     id: 'qqbot',
@@ -199,6 +202,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.qqbot.instructions.3',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
   telegram: {
     id: 'telegram',

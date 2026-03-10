@@ -17,6 +17,7 @@ import {
   AlertCircle,
   CheckCircle,
   ShieldCheck,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useChannelsStore } from '@/stores/channels';
 import { useGatewayStore } from '@/stores/gateway';
+import { useAgentsStore } from '@/stores/agents';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { hostApiFetch } from '@/lib/host-api';
 import { subscribeHostEvent } from '@/lib/host-events';
@@ -54,18 +56,22 @@ import feishuIcon from '@/assets/channels/feishu.svg';
 
 export function Channels() {
   const { t } = useTranslation('channels');
-  const { channels, loading, error, fetchChannels, deleteChannel } = useChannelsStore();
+  const { channels, loading, error, fetchChannels, deleteChannel, fetchBindings } = useChannelsStore();
   const gatewayStatus = useGatewayStore((state) => state.status);
+  const loadAgents = useAgentsStore((s) => s.loadAgents);
 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedChannelType, setSelectedChannelType] = useState<ChannelType | null>(null);
+  const [editAccountId, setEditAccountId] = useState<string | undefined>(undefined);
   const [configuredTypes, setConfiguredTypes] = useState<string[]>([]);
   const [channelToDelete, setChannelToDelete] = useState<{ id: string } | null>(null);
 
-  // Fetch channels on mount
+  // Fetch channels, bindings & agents on mount
   useEffect(() => {
     fetchChannels();
-  }, [fetchChannels]);
+    fetchBindings();
+    loadAgents();
+  }, [fetchChannels, fetchBindings, loadAgents]);
 
   // Fetch configured channel types from config file
   const fetchConfiguredTypes = useCallback(async () => {
@@ -91,6 +97,7 @@ export function Channels() {
     const unsubscribe = subscribeHostEvent('gateway:channel-status', () => {
       fetchChannels();
       fetchConfiguredTypes();
+      fetchBindings();
     });
     return () => {
       if (typeof unsubscribe === 'function') {
@@ -171,6 +178,11 @@ export function Channels() {
                   <ChannelCard
                     key={channel.id}
                     channel={channel}
+                    onEdit={() => {
+                      setSelectedChannelType(channel.type);
+                      setEditAccountId(channel.accountId || 'default');
+                      setShowAddDialog(true);
+                    }}
                     onDelete={() => setChannelToDelete({ id: channel.id })}
                   />
                 ))}
@@ -189,18 +201,24 @@ export function Channels() {
                 const meta = CHANNEL_META[type];
                 const isConfigured = channels.some(c => c.type === type) || configuredTypes.includes(type);
                 
-                // Hide already configured channels from "Supported Channels" section
-                if (isConfigured) return null;
-                
                 return (
                   <button
                     key={type}
                     onClick={() => {
                       setSelectedChannelType(type);
+                      // For multi-account channels that are already configured,
+                      // clicking again in "Supported" means "add new account"
+                      const meta = CHANNEL_META[type];
+                      if (meta.supportsMultiAccount && isConfigured) {
+                        setEditAccountId(undefined); // new account
+                      } else {
+                        setEditAccountId(undefined); // new or edit default
+                      }
                       setShowAddDialog(true);
                     }}
                     className={cn(
-                      "group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-black/5 dark:hover:bg-white/5"
+                      "group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-black/5 dark:hover:bg-white/5",
+                      isConfigured && "opacity-60"
                     )}
                   >
                     <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm mb-3">
@@ -212,6 +230,11 @@ export function Channels() {
                         {meta.isPlugin && (
                           <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70">
                             {t('pluginBadge', 'Plugin')}
+                          </Badge>
+                        )}
+                        {isConfigured && (
+                          <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-green-500/10 dark:bg-green-400/10 border-0 shadow-none text-green-600 dark:text-green-400">
+                            {t('configuredBadge', 'Configured')}
                           </Badge>
                         )}
                       </div>
@@ -232,16 +255,19 @@ export function Channels() {
       {showAddDialog && (
         <AddChannelDialog
           selectedType={selectedChannelType}
+          editAccountId={editAccountId}
           onSelectType={setSelectedChannelType}
           onClose={() => {
             setShowAddDialog(false);
             setSelectedChannelType(null);
+            setEditAccountId(undefined);
           }}
           onChannelAdded={() => {
             fetchChannels();
             fetchConfiguredTypes();
             setShowAddDialog(false);
             setSelectedChannelType(null);
+            setEditAccountId(undefined);
           }}
         />
       )}
@@ -256,9 +282,14 @@ export function Channels() {
         onConfirm={async () => {
           if (channelToDelete) {
             await deleteChannel(channelToDelete.id);
-            // Immediately update configuredTypes state so it disappears from available and appears in supported
-            const channelType = channelToDelete.id.split('-')[0];
-            setConfiguredTypes((prev) => prev.filter((type) => type !== channelType));
+            // Extract channel type from channelId (format: "channelType-accountId")
+            const dashIdx = channelToDelete.id.indexOf('-');
+            const channelType = dashIdx >= 0 ? channelToDelete.id.slice(0, dashIdx) : channelToDelete.id;
+            // Only remove from configuredTypes if no other accounts of same type remain
+            const remainingOfType = channels.filter(c => c.type === channelType && c.id !== channelToDelete.id);
+            if (remainingOfType.length === 0) {
+              setConfiguredTypes((prev) => prev.filter((type) => type !== channelType));
+            }
             setChannelToDelete(null);
           }
         }}
@@ -292,15 +323,25 @@ function ChannelLogo({ type }: { type: ChannelType }) {
 
 interface ChannelCardProps {
   channel: Channel;
+  onEdit: () => void;
   onDelete: () => void;
 }
 
-function ChannelCard({ channel, onDelete }: ChannelCardProps) {
+function ChannelCard({ channel, onEdit, onDelete }: ChannelCardProps) {
   const { t } = useTranslation('channels');
   const meta = CHANNEL_META[channel.type];
+  const boundAgentId = useChannelsStore((s) => s.getBindingAgent(channel.type, channel.accountId));
+  const boundAgent = useAgentsStore((s) => s.agents.find((a) => a.id === boundAgentId));
+  const showAccountBadge = channel.accountId && channel.accountId !== 'default';
 
   return (
-    <div className="group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-black/5 dark:hover:bg-white/5">
+    <div
+      className="group flex items-start gap-4 p-4 rounded-2xl transition-all text-left border relative overflow-hidden bg-transparent border-transparent hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+      onClick={onEdit}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onEdit(); }}
+    >
       <div className="h-[46px] w-[46px] shrink-0 flex items-center justify-center text-foreground bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-full shadow-sm mb-3">
         <ChannelLogo type={channel.type} />
       </div>
@@ -311,6 +352,16 @@ function ChannelCard({ channel, onDelete }: ChannelCardProps) {
             {meta?.isPlugin && (
               <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-black/[0.04] dark:bg-white/[0.08] border-0 shadow-none text-foreground/70">
                 {t('pluginBadge', 'Plugin')}
+              </Badge>
+            )}
+            {showAccountBadge && (
+              <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-purple-500/10 dark:bg-purple-400/10 border-0 shadow-none text-purple-600 dark:text-purple-400">
+                {channel.accountId}
+              </Badge>
+            )}
+            {boundAgent && (
+              <Badge variant="secondary" className="font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-500/10 dark:bg-blue-400/10 border-0 shadow-none text-blue-600 dark:text-blue-400">
+                {t('dialog.agentBound', { name: boundAgent.name || boundAgent.id })}
               </Badge>
             )}
             <div 
@@ -325,17 +376,30 @@ function ChannelCard({ channel, onDelete }: ChannelCardProps) {
             />
           </div>
           
-          <Button
-            variant="ghost"
-            size="icon"
-            className="opacity-0 group-hover:opacity-100 h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all shrink-0 -mr-2"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="opacity-0 group-hover:opacity-100 h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 transition-all shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="opacity-0 group-hover:opacity-100 h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all shrink-0 -mr-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         
         {channel.error ? (
@@ -356,16 +420,21 @@ function ChannelCard({ channel, onDelete }: ChannelCardProps) {
 
 interface AddChannelDialogProps {
   selectedType: ChannelType | null;
+  editAccountId?: string;
   onSelectType: (type: ChannelType | null) => void;
   onClose: () => void;
   onChannelAdded: () => void;
 }
 
-function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded }: AddChannelDialogProps) {
+function AddChannelDialog({ selectedType, editAccountId, onSelectType, onClose, onChannelAdded }: AddChannelDialogProps) {
   const { t } = useTranslation('channels');
-  const { addChannel } = useChannelsStore();
+  const { addChannel, setBinding, getBindingAgent } = useChannelsStore();
+  const agents = useAgentsStore((s) => s.agents);
+  const existingChannels = useChannelsStore((s) => s.channels);
   const [configValues, setConfigValues] = useState<Record<string, string>>({});
   const [channelName, setChannelName] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('main');
   const [connecting, setConnecting] = useState(false);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -380,17 +449,59 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
   } | null>(null);
 
   const meta: ChannelMeta | null = selectedType ? CHANNEL_META[selectedType] : null;
+  const isMultiAccount = meta?.supportsMultiAccount === true;
+  const isEditingExistingAccount = !!editAccountId;
 
   // Load existing config when a channel type is selected
   useEffect(() => {
     if (!selectedType) {
       setConfigValues({});
       setChannelName('');
-      setIsExistingConfig(false);
-      setChannelName('');
+      setAccountId('');
+      setSelectedAgentId('main');
       setIsExistingConfig(false);
       // Ensure we clean up any pending QR session if switching away
       hostApiFetch('/api/channels/whatsapp/cancel', { method: 'POST' }).catch(() => { });
+      return;
+    }
+
+    // Determine which accountId to load
+    const loadAccountId = editAccountId || undefined;
+
+    // Detect if we're creating a brand new account for an already-configured multi-account channel
+    const isCreatingNewAccount = isMultiAccount && !editAccountId && existingChannels.some(c => c.type === selectedType);
+
+    // Load existing binding for this channel type + account
+    const existingBinding = getBindingAgent(selectedType, loadAccountId);
+    setSelectedAgentId(existingBinding || 'main');
+
+    // For editing an existing account, pre-fill the account ID
+    if (editAccountId) {
+      setAccountId(editAccountId === 'default' ? '' : editAccountId);
+    } else if (isMultiAccount) {
+      // Creating a new account — suggest next available ID
+      const existingOfType = existingChannels.filter(c => c.type === selectedType);
+      if (existingOfType.length > 0) {
+        // Auto-suggest next account ID
+        let idx = existingOfType.length + 1;
+        let suggested = `${selectedType}${idx}`;
+        const existingIds = new Set(existingOfType.map(c => c.accountId || 'default'));
+        while (existingIds.has(suggested)) {
+          idx++;
+          suggested = `${selectedType}${idx}`;
+        }
+        setAccountId(suggested);
+      } else {
+        setAccountId('');
+      }
+    }
+
+    // For a brand-new account, show blank form immediately — don't load default config
+    if (isCreatingNewAccount) {
+      setConfigValues({});
+      setChannelName('');
+      setIsExistingConfig(false);
+      setLoadingConfig(false);
       return;
     }
 
@@ -401,13 +512,19 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       try {
         const result = await invokeIpc(
           'channel:getFormValues',
-          selectedType
+          selectedType,
+          loadAccountId,
         ) as { success: boolean; values?: Record<string, string> };
 
         if (cancelled) return;
 
         if (result.success && result.values && Object.keys(result.values).length > 0) {
-          setConfigValues(result.values);
+          // Extract 'name' from config values into channelName state
+          const { name: savedName, ...restValues } = result.values;
+          if (savedName) {
+            setChannelName(savedName);
+          }
+          setConfigValues(restValues);
           setIsExistingConfig(true);
         } else {
           setConfigValues({});
@@ -424,7 +541,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
     })();
 
     return () => { cancelled = true; };
-  }, [selectedType]);
+  }, [selectedType, editAccountId]);
 
   // Focus first input when form is ready (avoids Windows focus loss after native dialogs)
   useEffect(() => {
@@ -600,6 +717,11 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
 
       // Step 2: Save channel configuration via IPC
       const config: Record<string, unknown> = { ...configValues };
+      // Include the channel display name in the saved config
+      if (channelName.trim()) {
+        config.name = channelName.trim();
+      }
+      const resolvedAccountId = isMultiAccount && accountId.trim() ? accountId.trim() : undefined;
       const saveResult = await hostApiFetch<{
         success?: boolean;
         error?: string;
@@ -607,7 +729,7 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
         pluginInstalled?: boolean;
       }>('/api/channels/config', {
         method: 'POST',
-        body: JSON.stringify({ channelType: selectedType, config }),
+        body: JSON.stringify({ channelType: selectedType, config, accountId: resolvedAccountId }),
       });
       if (!saveResult?.success) {
         throw new Error(saveResult?.error || 'Failed to save channel config');
@@ -619,9 +741,12 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
       // Step 3: Add a local channel entry for the UI
       await addChannel({
         type: selectedType,
-        name: channelName || CHANNEL_NAMES[selectedType],
+        name: channelName || (resolvedAccountId ? `${CHANNEL_NAMES[selectedType]} (${resolvedAccountId})` : CHANNEL_NAMES[selectedType]),
         token: configValues[meta.configFields[0]?.key] || undefined,
       });
+
+      // Step 4: Save agent binding (if an agent other than main is selected)
+      await setBinding(selectedType, selectedAgentId === 'main' ? null : selectedAgentId, resolvedAccountId);
 
       toast.success(t('toast.channelSaved', { name: meta.name }));
 
@@ -685,8 +810,12 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
             <CardTitle className="text-2xl font-serif font-normal">
               {selectedType
                 ? isExistingConfig
-                  ? t('dialog.updateTitle', { name: CHANNEL_NAMES[selectedType] })
-                  : t('dialog.configureTitle', { name: CHANNEL_NAMES[selectedType] })
+                  ? isMultiAccount && editAccountId && editAccountId !== 'default'
+                    ? t('dialog.updateTitle', { name: `${CHANNEL_NAMES[selectedType]} (${editAccountId})` })
+                    : t('dialog.updateTitle', { name: CHANNEL_NAMES[selectedType] })
+                  : isMultiAccount && existingChannels.some(c => c.type === selectedType)
+                    ? t('dialog.addAccountTitle', { name: CHANNEL_NAMES[selectedType] })
+                    : t('dialog.configureTitle', { name: CHANNEL_NAMES[selectedType] })
                 : t('dialog.addTitle')}
             </CardTitle>
             <CardDescription className="text-[15px] mt-1 text-foreground/70">
@@ -796,6 +925,46 @@ function AddChannelDialog({ selectedType, onSelectType, onClose, onChannelAdded 
                   className="h-[44px] rounded-xl font-mono text-[13px] bg-[#eeece3] dark:bg-[#151514] border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40"
                 />
               </div>
+
+              {/* Account ID — only for multi-account channel types */}
+              {isMultiAccount && (
+                <div className="space-y-2.5">
+                  <Label htmlFor="accountId" className="text-[14px] text-foreground/80 font-bold">{t('dialog.accountId', 'Account ID')}</Label>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed -mt-1">{t('dialog.accountIdDesc', 'Unique identifier for this instance. Use different IDs to run multiple bots of the same type.')}</p>
+                  <Input
+                    id="accountId"
+                    placeholder={t('dialog.accountIdPlaceholder', 'e.g. bot1, novel-bot')}
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                    disabled={isEditingExistingAccount}
+                    className={cn(
+                      "h-[44px] rounded-xl font-mono text-[13px] bg-[#eeece3] dark:bg-[#151514] border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 focus-visible:border-blue-500 shadow-sm transition-all text-foreground placeholder:text-foreground/40",
+                      isEditingExistingAccount && "opacity-60 cursor-not-allowed"
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Agent selector */}
+              {agents.length > 1 && (
+                <div className="space-y-2.5">
+                  <Label htmlFor="agent" className="text-[14px] text-foreground/80 font-bold">{t('dialog.boundAgent')}</Label>
+                  <p className="text-[13px] text-muted-foreground leading-relaxed -mt-1">{t('dialog.selectAgentDesc')}</p>
+                  <select
+                    id="agent"
+                    value={selectedAgentId}
+                    onChange={(e) => setSelectedAgentId(e.target.value)}
+                    className="w-full h-[44px] rounded-xl px-3 text-[13px] bg-[#eeece3] dark:bg-[#151514] border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 shadow-sm transition-all text-foreground appearance-none cursor-pointer"
+                  >
+                    <option value="main">{t('dialog.defaultAgent')}</option>
+                    {agents.filter((a) => a.id !== 'main').map((agent) => (
+                      <option key={agent.id} value={agent.id}>
+                        {agent.name || agent.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Configuration fields */}
               {meta?.configFields.map((field) => (

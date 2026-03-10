@@ -28,6 +28,13 @@ export interface BackupFile {
   content: string;
 }
 
+export interface BackupAgent {
+  /** Agent ID (e.g., 'main', 'my-agent') */
+  id: string;
+  /** Workspace files (SOUL.md, AGENTS.md, IDENTITY.md, etc.) — paths relative to workspace dir */
+  workspaceFiles: BackupFile[];
+}
+
 export interface BackupManifest {
   version: 2;
   appVersion: string;
@@ -46,6 +53,8 @@ export interface BackupManifest {
   skills: BackupFile[];
   /** Chat session JSONL files */
   chatSessions: BackupFile[];
+  /** Agent workspace files (SOUL.md etc.) per agent */
+  agents: BackupAgent[];
   /** Cron tasks (if Gateway was running) */
   cronTasks: unknown[] | null;
   /** Background image (base64) */
@@ -146,7 +155,7 @@ async function restoreDirectoryFiles(baseDir: string, files: BackupFile[]): Prom
 export async function exportBackup(onProgress?: ProgressCallback): Promise<BackupManifest> {
   const stages = [
     'settings', 'providers', 'openclawConfig', 'openclawAuth',
-    'skills', 'chatSessions', 'backgroundImage',
+    'skills', 'chatSessions', 'agents', 'backgroundImage',
   ];
   let stageIndex = 0;
   const report = (stage: string, current = 0, total = 1) => {
@@ -181,7 +190,11 @@ export async function exportBackup(onProgress?: ProgressCallback): Promise<Backu
   const agentsDir = join(OPENCLAW_DIR, 'agents');
   const chatSessions = await collectChatSessions(agentsDir, onProgress);
 
-  // 7. Background image
+  // 7. Agent workspace files (SOUL.md, AGENTS.md, IDENTITY.md, etc.)
+  report(stages[stageIndex++]);
+  const agents = await collectAgentWorkspaces(openclawConfig, onProgress);
+
+  // 8. Background image
   report(stages[stageIndex++]);
   let backgroundImage: BackupFile | null = null;
   if (settings?.backgroundImage && typeof settings.backgroundImage === 'string' && settings.backgroundImage.length > 0) {
@@ -210,6 +223,7 @@ export async function exportBackup(onProgress?: ProgressCallback): Promise<Backu
     openclawAuth,
     skills,
     chatSessions,
+    agents,
     cronTasks: null, // Cron tasks handled separately via Gateway RPC
     backgroundImage,
   };
@@ -260,6 +274,41 @@ async function collectChatSessions(
   return results;
 }
 
+/**
+ * Collect agent workspace files (SOUL.md, AGENTS.md, IDENTITY.md, etc.)
+ * for every configured agent.
+ */
+async function collectAgentWorkspaces(
+  openclawConfig: Record<string, unknown> | null,
+  onProgress?: ProgressCallback,
+): Promise<BackupAgent[]> {
+  const results: BackupAgent[] = [];
+  if (!openclawConfig) return results;
+
+  // Resolve agent list from config
+  const agentsCfg = openclawConfig.agents as { list?: Array<{ id: string; workspace?: string }> } | undefined;
+  const agentList = Array.isArray(agentsCfg?.list) ? agentsCfg!.list : [];
+
+  // Also check for the implicit 'main' agent if not in list
+  const hasMain = agentList.some(a => a.id === 'main');
+  const candidates = hasMain ? agentList : [{ id: 'main' }, ...agentList];
+
+  for (const agent of candidates) {
+    const workspace = agent.workspace || join(OPENCLAW_DIR, `workspace-${agent.id}`);
+    if (!(await fileExists(workspace))) continue;
+
+    const workspaceFiles = await collectDirectoryFiles(workspace, undefined, 'agents');
+    if (workspaceFiles.length > 0) {
+      results.push({ id: agent.id, workspaceFiles });
+      if (onProgress) {
+        onProgress({ stage: 'agents', current: results.length, total: -1 });
+      }
+    }
+  }
+
+  return results;
+}
+
 // ── Import ───────────────────────────────────────────────────────
 
 export interface ImportOptions {
@@ -275,6 +324,8 @@ export interface ImportOptions {
   skills: boolean;
   /** Restore chat history */
   chatSessions: boolean;
+  /** Restore agent workspace files (SOUL.md etc.) */
+  agents: boolean;
   /** Restore background image */
   backgroundImage: boolean;
   /** Restore cron tasks */
@@ -288,6 +339,7 @@ export const DEFAULT_IMPORT_OPTIONS: ImportOptions = {
   openclawAuth: true,
   skills: true,
   chatSessions: true,
+  agents: true,
   backgroundImage: true,
   cronTasks: true,
 };
@@ -407,7 +459,37 @@ export async function importBackup(
     result.skipped.push('chatSessions');
   }
 
-  // 7. Background image/video
+  // 7. Agent workspace files (SOUL.md etc.)
+  const manifestAgents = manifest.agents || [];
+  if (options.agents && manifestAgents.length > 0) {
+    report('agents', 0, manifestAgents.length);
+    try {
+      // Read the (possibly just-restored) openclaw.json to learn existing workspace paths
+      const cfgPath = join(OPENCLAW_DIR, 'openclaw.json');
+      const currentCfg = await readJsonFile(cfgPath) as {
+        agents?: { list?: Array<{ id: string; workspace?: string }> };
+      } | null;
+      const existingList = currentCfg?.agents?.list || [];
+
+      let agentsRestored = 0;
+      for (const backupAgent of manifestAgents) {
+        // Determine target workspace dir — match existing config entry or use conventional path
+        const existing = existingList.find(a => a.id === backupAgent.id);
+        const targetWorkspace = existing?.workspace || join(OPENCLAW_DIR, `workspace-${backupAgent.id}`);
+
+        await restoreDirectoryFiles(targetWorkspace, backupAgent.workspaceFiles);
+        agentsRestored++;
+        report('agents', agentsRestored, manifestAgents.length);
+      }
+      result.restored.push('agents');
+    } catch (err) {
+      result.errors.push({ category: 'agents', error: String(err) });
+    }
+  } else {
+    result.skipped.push('agents');
+  }
+
+  // 8. Background image/video
   if (options.backgroundImage && manifest.backgroundImage) {
     report('backgroundImage');
     try {
@@ -434,7 +516,7 @@ export async function importBackup(
     result.skipped.push('backgroundImage');
   }
 
-  // 8. Cron tasks — skip here, handled by renderer calling Gateway RPC
+  // 9. Cron tasks — skip here, handled by renderer calling Gateway RPC
   if (options.cronTasks && manifest.cronTasks && manifest.cronTasks.length > 0) {
     result.restored.push('cronTasks');
   } else {
@@ -454,6 +536,7 @@ export async function getBackupSummary(): Promise<{
   channelsCount: number;
   skillsCount: number;
   chatSessionsCount: number;
+  agentsCount: number;
   hasBackgroundImage: boolean;
 }> {
   const settingsPath = join(app.getPath('userData'), 'settings.json');
@@ -493,6 +576,20 @@ export async function getBackupSummary(): Promise<{
     }
   } catch { /* empty */ }
 
+  // Count agents (from config, excluding the implicit 'main')
+  let agentsCount = 0;
+  const agentsCfg = openclawConfig?.agents as { list?: Array<{ id: string }> } | undefined;
+  if (Array.isArray(agentsCfg?.list)) {
+    agentsCount = agentsCfg!.list.length;
+  }
+  // Always count at least 1 for the implicit 'main' agent if its workspace exists
+  if (agentsCount === 0) {
+    const mainWorkspace = join(OPENCLAW_DIR, 'workspace-main');
+    if (await fileExists(mainWorkspace)) {
+      agentsCount = 1;
+    }
+  }
+
   // Count channels
   let channelsCount = 0;
   if (openclawConfig?.channels && typeof openclawConfig.channels === 'object') {
@@ -513,6 +610,7 @@ export async function getBackupSummary(): Promise<{
     channelsCount,
     skillsCount,
     chatSessionsCount,
+    agentsCount,
     hasBackgroundImage: !!(settings?.backgroundImage),
   };
 }

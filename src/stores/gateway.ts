@@ -153,6 +153,12 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
           const unsubscribers: Array<() => void> = [];
           unsubscribers.push(subscribeHostEvent<GatewayStatus>('gateway:status', (payload) => {
             set({ status: payload });
+            // When gateway transitions to running, load agents
+            if (payload.state === 'running') {
+              import('./agents').then(({ useAgentsStore }) => {
+                useAgentsStore.getState().loadAgents();
+              }).catch(() => {});
+            }
           }));
           unsubscribers.push(subscribeHostEvent<{ message?: string }>('gateway:error', (payload) => {
             set({ lastError: payload.message || 'Gateway error' });

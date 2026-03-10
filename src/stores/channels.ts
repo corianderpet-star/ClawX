@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand';
 import { hostApiFetch } from '@/lib/host-api';
+import { invokeIpc } from '@/lib/api-client';
 import { useGatewayStore } from './gateway';
 import type { Channel, ChannelType } from '../types/channel';
 
@@ -13,8 +14,16 @@ interface AddChannelParams {
   token?: string;
 }
 
+export interface ChannelBinding {
+  channelType: string;
+  agentId: string;
+  accountId?: string;
+}
+
 interface ChannelsState {
   channels: Channel[];
+  /** Channel–agent bindings: which agent handles which channel */
+  bindings: ChannelBinding[];
   loading: boolean;
   error: string | null;
 
@@ -28,10 +37,17 @@ interface ChannelsState {
   setChannels: (channels: Channel[]) => void;
   updateChannel: (channelId: string, updates: Partial<Channel>) => void;
   clearError: () => void;
+  /** Load channel–agent bindings from config */
+  fetchBindings: () => Promise<void>;
+  /** Set or update a channel–agent binding */
+  setBinding: (channelType: string, agentId: string | null, accountId?: string) => Promise<void>;
+  /** Get the bound agent ID for a channel type (optionally per account) */
+  getBindingAgent: (channelType: string, accountId?: string) => string | undefined;
 }
 
 export const useChannelsStore = create<ChannelsState>((set, get) => ({
   channels: [],
+  bindings: [],
   loading: false,
   error: null,
 
@@ -71,51 +87,59 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
           if (!configured) continue;
 
           const accounts = data.channelAccounts?.[channelId] || [];
-          const defaultAccountId = data.channelDefaultAccountId?.[channelId];
-          const primaryAccount =
-            (defaultAccountId ? accounts.find((a) => a.accountId === defaultAccountId) : undefined) ||
-            accounts.find((a) => a.connected === true || a.linked === true) ||
-            accounts[0];
-
-          // Map gateway status to our status format
-          let status: Channel['status'] = 'disconnected';
-          const now = Date.now();
-          const RECENT_MS = 10 * 60 * 1000;
-          const hasRecentActivity = (a: { lastInboundAt?: number | null; lastOutboundAt?: number | null; lastConnectedAt?: number | null }) =>
-            (typeof a.lastInboundAt === 'number' && now - a.lastInboundAt < RECENT_MS) ||
-            (typeof a.lastOutboundAt === 'number' && now - a.lastOutboundAt < RECENT_MS) ||
-            (typeof a.lastConnectedAt === 'number' && now - a.lastConnectedAt < RECENT_MS);
-          const anyConnected = accounts.some((a) => a.connected === true || a.linked === true || hasRecentActivity(a));
-          const anyRunning = accounts.some((a) => a.running === true);
           const summaryError =
             typeof (summary as { error?: string })?.error === 'string'
               ? (summary as { error?: string }).error
               : typeof (summary as { lastError?: string })?.lastError === 'string'
                 ? (summary as { lastError?: string }).lastError
                 : undefined;
-          const anyError =
-            accounts.some((a) => typeof a.lastError === 'string' && a.lastError) || Boolean(summaryError);
 
-          if (anyConnected) {
-            status = 'connected';
-          } else if (anyRunning && !anyError) {
-            status = 'connected';
-          } else if (anyError) {
-            status = 'error';
-          } else if (anyRunning) {
-            status = 'connecting';
+          // Show each account as a separate card
+          if (accounts.length > 0) {
+            for (const account of accounts) {
+              const now = Date.now();
+              const RECENT_MS = 10 * 60 * 1000;
+              const hasRecentActivity =
+                (typeof account.lastInboundAt === 'number' && now - account.lastInboundAt < RECENT_MS) ||
+                (typeof account.lastOutboundAt === 'number' && now - account.lastOutboundAt < RECENT_MS) ||
+                (typeof account.lastConnectedAt === 'number' && now - account.lastConnectedAt < RECENT_MS);
+              const isConnected = account.connected === true || account.linked === true || hasRecentActivity;
+              const isRunning = account.running === true;
+              const hasError = typeof account.lastError === 'string' && account.lastError;
+
+              let status: Channel['status'] = 'disconnected';
+              if (isConnected) {
+                status = 'connected';
+              } else if (isRunning && !hasError) {
+                status = 'connected';
+              } else if (hasError) {
+                status = 'error';
+              } else if (isRunning) {
+                status = 'connecting';
+              }
+
+              const acctId = account.accountId || 'default';
+              channels.push({
+                id: `${channelId}-${acctId}`,
+                type: channelId as ChannelType,
+                name: account.name || (acctId === 'default' ? channelId : `${channelId} (${acctId})`),
+                status,
+                accountId: account.accountId,
+                error:
+                  (typeof account.lastError === 'string' ? account.lastError : undefined) ||
+                  (typeof summaryError === 'string' ? summaryError : undefined),
+              });
+            }
+          } else {
+            // No per-account data, show a single card for the channel
+            channels.push({
+              id: `${channelId}-default`,
+              type: channelId as ChannelType,
+              name: channelId,
+              status: summaryError ? 'error' : 'disconnected',
+              error: typeof summaryError === 'string' ? summaryError : undefined,
+            });
           }
-
-          channels.push({
-            id: `${channelId}-${primaryAccount?.accountId || 'default'}`,
-            type: channelId as ChannelType,
-            name: primaryAccount?.name || channelId,
-            status,
-            accountId: primaryAccount?.accountId,
-            error:
-              (typeof primaryAccount?.lastError === 'string' ? primaryAccount.lastError : undefined) ||
-              (typeof summaryError === 'string' ? summaryError : undefined),
-          });
         }
 
         set({ channels, loading: false });
@@ -167,12 +191,16 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
   },
 
   deleteChannel: async (channelId) => {
-    // Extract channel type from the channelId (format: "channelType-accountId")
-    const channelType = channelId.split('-')[0];
+    // Extract channel type and accountId from the channelId (format: "channelType-accountId")
+    const dashIdx = channelId.indexOf('-');
+    const channelType = dashIdx >= 0 ? channelId.slice(0, dashIdx) : channelId;
+    const accountId = dashIdx >= 0 ? channelId.slice(dashIdx + 1) : undefined;
 
     try {
       // Delete the channel configuration from openclaw.json
-      await hostApiFetch(`/api/channels/config/${encodeURIComponent(channelType)}`, {
+      const deleteUrl = `/api/channels/config/${encodeURIComponent(channelType)}` +
+        (accountId && accountId !== 'default' ? `?accountId=${encodeURIComponent(accountId)}` : '');
+      await hostApiFetch(deleteUrl, {
         method: 'DELETE',
       });
     } catch (error) {
@@ -234,4 +262,41 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  fetchBindings: async () => {
+    try {
+      const bindings = await invokeIpc('binding:list') as ChannelBinding[];
+      set({ bindings: Array.isArray(bindings) ? bindings : [] });
+    } catch {
+      // ignore — bindings are optional
+    }
+  },
+
+  setBinding: async (channelType: string, agentId: string | null, accountId?: string) => {
+    await invokeIpc('binding:set', { channelType, agentId, accountId });
+    // Update local state optimistically
+    set((state) => {
+      const filtered = state.bindings.filter((b) => {
+        if (b.channelType !== channelType) return true;
+        // Match by accountId when provided
+        if (accountId) return b.accountId !== accountId;
+        return b.accountId !== undefined;
+      });
+      if (agentId && agentId !== 'main') {
+        filtered.push({ channelType, agentId, accountId });
+      }
+      return { bindings: filtered };
+    });
+  },
+
+  getBindingAgent: (channelType: string, accountId?: string) => {
+    const bindings = get().bindings;
+    if (accountId) {
+      // First try exact match with accountId
+      const exact = bindings.find((b) => b.channelType === channelType && b.accountId === accountId);
+      if (exact) return exact.agentId;
+    }
+    // Fallback to binding without accountId (default)
+    return bindings.find((b) => b.channelType === channelType && !b.accountId)?.agentId;
+  },
 }));

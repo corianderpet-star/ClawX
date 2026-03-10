@@ -88,11 +88,16 @@ export async function writeOpenClawConfig(config: OpenClawConfig): Promise<void>
     }
 }
 
+// Channels whose plugins natively support the `accounts` sub-object pattern:
+//   channels.<type>.accounts.<accountId> = { ...config }
+const MULTI_ACCOUNT_CHANNELS = ['qqbot', 'dingtalk'];
+
 // ── Channel operations ───────────────────────────────────────────
 
 export async function saveChannelConfig(
     channelType: string,
-    config: ChannelConfigData
+    config: ChannelConfigData,
+    accountId?: string,
 ): Promise<void> {
     const currentConfig = await readOpenClawConfig();
 
@@ -224,11 +229,32 @@ export async function saveChannelConfig(
     }
 
     // Merge with existing config
-    currentConfig.channels[channelType] = {
-        ...currentConfig.channels[channelType],
-        ...transformedConfig,
-        enabled: transformedConfig.enabled ?? true,
-    };
+    // For multi-account channels with a non-default accountId, store under
+    // channels.<type>.accounts.<accountId> instead of top-level.
+    const resolvedAccountId = accountId || 'default';
+    if (MULTI_ACCOUNT_CHANNELS.includes(channelType) && resolvedAccountId !== 'default') {
+        if (!currentConfig.channels[channelType]) {
+            currentConfig.channels[channelType] = { enabled: true };
+        }
+        const channelSection = currentConfig.channels[channelType] as Record<string, unknown>;
+        if (!channelSection.accounts || typeof channelSection.accounts !== 'object') {
+            channelSection.accounts = {};
+        }
+        const accounts = channelSection.accounts as Record<string, ChannelConfigData>;
+        accounts[resolvedAccountId] = {
+            ...accounts[resolvedAccountId],
+            ...transformedConfig,
+            enabled: transformedConfig.enabled ?? true,
+        };
+        // Ensure top-level enabled is true when any account exists
+        channelSection.enabled = true;
+    } else {
+        currentConfig.channels[channelType] = {
+            ...currentConfig.channels[channelType],
+            ...transformedConfig,
+            enabled: transformedConfig.enabled ?? true,
+        };
+    }
 
     await writeOpenClawConfig(currentConfig);
     logger.info('Channel config saved', {
@@ -241,13 +267,22 @@ export async function saveChannelConfig(
     console.log(`Saved channel config for ${channelType}`);
 }
 
-export async function getChannelConfig(channelType: string): Promise<ChannelConfigData | undefined> {
+export async function getChannelConfig(channelType: string, accountId?: string): Promise<ChannelConfigData | undefined> {
     const config = await readOpenClawConfig();
-    return config.channels?.[channelType];
+    const channelSection = config.channels?.[channelType];
+    if (!channelSection) return undefined;
+
+    const resolvedAccountId = accountId || 'default';
+    if (MULTI_ACCOUNT_CHANNELS.includes(channelType) && resolvedAccountId !== 'default') {
+        const accounts = (channelSection as Record<string, unknown>).accounts as Record<string, ChannelConfigData> | undefined;
+        return accounts?.[resolvedAccountId];
+    }
+
+    return channelSection;
 }
 
-export async function getChannelFormValues(channelType: string): Promise<Record<string, string> | undefined> {
-    const saved = await getChannelConfig(channelType);
+export async function getChannelFormValues(channelType: string, accountId?: string): Promise<Record<string, string> | undefined> {
+    const saved = await getChannelConfig(channelType, accountId);
     if (!saved) return undefined;
 
     const values: Record<string, string> = {};
@@ -291,8 +326,25 @@ export async function getChannelFormValues(channelType: string): Promise<Record<
     return Object.keys(values).length > 0 ? values : undefined;
 }
 
-export async function deleteChannelConfig(channelType: string): Promise<void> {
+export async function deleteChannelConfig(channelType: string, accountId?: string): Promise<void> {
     const currentConfig = await readOpenClawConfig();
+
+    const resolvedAccountId = accountId || 'default';
+
+    // For multi-account channels with a non-default accountId, only remove that account
+    if (MULTI_ACCOUNT_CHANNELS.includes(channelType) && resolvedAccountId !== 'default') {
+        const channelSection = currentConfig.channels?.[channelType] as Record<string, unknown> | undefined;
+        const accounts = channelSection?.accounts as Record<string, unknown> | undefined;
+        if (accounts?.[resolvedAccountId]) {
+            delete accounts[resolvedAccountId];
+            if (Object.keys(accounts).length === 0) {
+                delete channelSection!.accounts;
+            }
+            await writeOpenClawConfig(currentConfig);
+            console.log(`Deleted channel account config for ${channelType}/${resolvedAccountId}`);
+        }
+        return;
+    }
 
     if (currentConfig.channels?.[channelType]) {
         delete currentConfig.channels[channelType];
@@ -610,4 +662,79 @@ export async function validateChannelConfig(channelType: string): Promise<Valida
     }
 
     return result;
+}
+
+// ── Channel–Agent Bindings ──────────────────────────────────────
+
+export interface ChannelBinding {
+    channelType: string;
+    agentId: string;
+    accountId?: string;
+}
+
+/**
+ * Get all channel–agent bindings from the config.
+ * Returns an array of { channelType, agentId, accountId }.
+ */
+export async function getChannelBindings(): Promise<ChannelBinding[]> {
+    const config = await readOpenClawConfig();
+    const bindings = (config as Record<string, unknown>).bindings;
+    if (!Array.isArray(bindings)) return [];
+
+    const result: ChannelBinding[] = [];
+    for (const b of bindings) {
+        if (b && typeof b === 'object' && typeof b.agentId === 'string' && b.match && typeof b.match === 'object') {
+            const channel = (b.match as Record<string, unknown>).channel;
+            const accountId = (b.match as Record<string, unknown>).accountId;
+            if (typeof channel === 'string') {
+                result.push({
+                    channelType: channel,
+                    agentId: b.agentId,
+                    accountId: typeof accountId === 'string' ? accountId : undefined,
+                });
+            }
+        }
+    }
+    return result;
+}
+
+/**
+ * Set or update a channel–agent binding.
+ * If agentId is empty/null, the binding for that channelType+accountId is removed.
+ */
+export async function setChannelBinding(channelType: string, agentId: string | null, accountId?: string): Promise<void> {
+    const config = await readOpenClawConfig() as Record<string, unknown>;
+
+    let bindings = Array.isArray(config.bindings)
+        ? (config.bindings as Array<{ agentId: string; match?: Record<string, unknown> }>)
+        : [];
+
+    // Remove existing binding for this channel type + accountId combo
+    bindings = bindings.filter(
+        (b) => {
+            if (!(b.match && typeof b.match === 'object')) return true;
+            const matchChannel = (b.match as Record<string, unknown>).channel;
+            const matchAccountId = (b.match as Record<string, unknown>).accountId;
+            if (matchChannel !== channelType) return true;
+            // When accountId is provided, only remove the matching accountId binding
+            if (accountId) {
+                return matchAccountId !== accountId;
+            }
+            // When no accountId, remove bindings without accountId (default)
+            return matchAccountId !== undefined;
+        },
+    );
+
+    // Add new binding if agentId is provided and not 'main'
+    if (agentId && agentId !== 'main') {
+        const match: Record<string, string> = { channel: channelType };
+        if (accountId && accountId !== 'default') {
+            match.accountId = accountId;
+        }
+        bindings.push({ agentId, match });
+    }
+
+    config.bindings = bindings.length > 0 ? bindings : undefined;
+    await writeOpenClawConfig(config as OpenClawConfig);
+    logger.info('Channel binding updated', { channelType, agentId, accountId });
 }

@@ -282,6 +282,7 @@
       "channels": "{{count}} 个频道配置",
       "skills": "{{count}} 个技能",
       "chatSessions": "{{count}} 条聊天记录",
+      "agents": "{{count}} 个智能体",
       "settings": "应用设置",
       "backgroundImage": "背景图片"
     },
@@ -292,6 +293,7 @@
       "openclawAuth": "导出认证信息...",
       "skills": "导出技能...",
       "chatSessions": "导出聊天记录...",
+      "agents": "导出智能体...",
       "backgroundImage": "导出背景图片..."
     }
   },

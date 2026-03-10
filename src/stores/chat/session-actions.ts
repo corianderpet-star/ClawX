@@ -1,12 +1,13 @@
 import { invokeIpc } from '@/lib/api-client';
 import { getCanonicalPrefixFromSessions, getMessageText, toMs } from './helpers';
-import { DEFAULT_CANONICAL_PREFIX, DEFAULT_SESSION_KEY, type ChatSession, type RawMessage } from './types';
+import { DEFAULT_SESSION_KEY, agentPrefix, agentDefaultSession, type ChatSession, type RawMessage } from './types';
 import type { ChatGet, ChatSet, SessionHistoryActions } from './store-api';
+import { useAgentsStore } from '@/stores/agents';
 
 export function createSessionActions(
   set: ChatSet,
   get: ChatGet,
-): Pick<SessionHistoryActions, 'loadSessions' | 'switchSession' | 'newSession' | 'deleteSession' | 'cleanupEmptySession'> {
+): Pick<SessionHistoryActions, 'loadSessions' | 'switchSession' | 'switchAgent' | 'newSession' | 'deleteSession' | 'cleanupEmptySession'> {
   return {
     loadSessions: async () => {
       try {
@@ -145,6 +146,55 @@ export function createSessionActions(
       get().loadHistory();
     },
 
+    // ── Switch agent ──
+
+    switchAgent: (agentId: string) => {
+      const { currentSessionKey, messages, sessions } = get();
+      const leavingEmpty = !currentSessionKey.endsWith(':main') && messages.length === 0;
+
+      // Find an existing session for this agent, or create the default one
+      const agentSessionKeyPrefix = agentPrefix(agentId);
+      const existingSession = sessions.find((s) => s.key.startsWith(agentSessionKeyPrefix + ':'));
+      const targetSessionKey = existingSession?.key ?? agentDefaultSession(agentId);
+
+      // If target session doesn't exist yet, add it to the list
+      const sessionsWithTarget = sessions.some((s) => s.key === targetSessionKey)
+        ? sessions
+        : [...sessions, { key: targetSessionKey, displayName: targetSessionKey }];
+
+      set((s) => ({
+        currentSessionKey: targetSessionKey,
+        currentAgentId: agentId,
+        messages: [],
+        streamingText: '',
+        streamingMessage: null,
+        streamingTools: [],
+        activeRunId: null,
+        error: null,
+        pendingFinal: false,
+        lastUserMessageAt: null,
+        pendingToolImages: [],
+        sessions: leavingEmpty
+          ? sessionsWithTarget.filter((sess) => sess.key !== currentSessionKey)
+          : sessionsWithTarget,
+        ...(leavingEmpty ? {
+          sessionLabels: Object.fromEntries(
+            Object.entries(s.sessionLabels).filter(([k]) => k !== currentSessionKey),
+          ),
+          sessionLastActivity: Object.fromEntries(
+            Object.entries(s.sessionLastActivity).filter(([k]) => k !== currentSessionKey),
+          ),
+        } : {}),
+      }));
+
+      // Sync the agents store
+      useAgentsStore.getState().setCurrentAgent(agentId);
+
+      // Reload sessions & history for the new agent
+      get().loadSessions();
+      get().loadHistory();
+    },
+
     // ── Delete session ──
     //
     // NOTE: The OpenClaw Gateway does NOT expose a sessions.delete (or equivalent)
@@ -212,7 +262,8 @@ export function createSessionActions(
       // conversation history inaccessible when the user switches back to it.
       const { currentSessionKey, messages } = get();
       const leavingEmpty = !currentSessionKey.endsWith(':main') && messages.length === 0;
-      const prefix = getCanonicalPrefixFromSessions(get().sessions) ?? DEFAULT_CANONICAL_PREFIX;
+      const currentAgentId = useAgentsStore.getState().currentAgentId;
+      const prefix = getCanonicalPrefixFromSessions(get().sessions) ?? agentPrefix(currentAgentId);
       const newKey = `${prefix}:session-${Date.now()}`;
       const newSessionEntry: ChatSession = { key: newKey, displayName: newKey };
       set((s) => ({

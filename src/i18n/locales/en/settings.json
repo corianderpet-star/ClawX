@@ -282,6 +282,7 @@
       "channels": "{{count}} channel configs",
       "skills": "{{count}} skills",
       "chatSessions": "{{count}} chat sessions",
+      "agents": "{{count}} agents",
       "settings": "App settings",
       "backgroundImage": "Background image"
     },
@@ -292,6 +293,7 @@
       "openclawAuth": "Exporting auth info...",
       "skills": "Exporting skills...",
       "chatSessions": "Exporting chat sessions...",
+      "agents": "Exporting agents...",
       "backgroundImage": "Exporting background image..."
     }
   },

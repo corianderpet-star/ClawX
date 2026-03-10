@@ -23,6 +23,7 @@ import {
   PackageCheck,
   Loader2,
   Video,
+  Bot,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,6 +69,7 @@ interface BackupSummary {
   channelsCount: number;
   skillsCount: number;
   chatSessionsCount: number;
+  agentsCount: number;
   hasBackgroundImage: boolean;
 }
 
@@ -189,6 +191,12 @@ function MigrationSection() {
             <div className="flex items-center gap-2 text-muted-foreground">
               <PackageCheck className="h-4 w-4 shrink-0" />
               <span>{t('migration.summary.chatSessions', { count: summary.chatSessionsCount })}</span>
+            </div>
+          )}
+          {summary.agentsCount > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Bot className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.agents', { count: summary.agentsCount })}</span>
             </div>
           )}
           {summary.settingsSize > 0 && (
