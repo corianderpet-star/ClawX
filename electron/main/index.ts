@@ -2,7 +2,7 @@
  * Electron Main Process Entry
  * Manages window creation, system tray, and IPC handlers
  */
-import { app, BrowserWindow, nativeImage, net, protocol, session, shell } from 'electron';
+import { app, BrowserWindow, nativeImage, net, powerMonitor, protocol, session, shell } from 'electron';
 import type { Server } from 'node:http';
 import { join } from 'path';
 import { pathToFileURL } from 'node:url';
@@ -320,6 +320,31 @@ async function initialize(): Promise<void> {
 
   whatsAppLoginManager.on('error', (error) => {
     hostEventBus.emit('channel:whatsapp-error', error);
+  });
+
+  // After system sleep/resume, proactively verify the Gateway connection.
+  // WebSocket connections often become zombie sockets after the OS suspends
+  // networking.  A short delay lets the network stack come back online.
+  powerMonitor.on('resume', () => {
+    logger.info('System resumed from sleep, checking Gateway connection...');
+    setTimeout(async () => {
+      try {
+        const health = await gatewayManager.checkHealth();
+        if (!health.ok) {
+          logger.warn(`Gateway unhealthy after resume (${health.error}), restarting...`);
+          await gatewayManager.restart();
+        } else {
+          logger.debug('Gateway healthy after system resume');
+        }
+      } catch (error) {
+        logger.warn('Gateway health check failed after resume, restarting:', error);
+        try {
+          await gatewayManager.restart();
+        } catch (restartErr) {
+          logger.error('Gateway restart after resume failed:', restartErr);
+        }
+      }
+    }, 3000); // 3 s delay for network stack to stabilize
   });
 
   // Start Gateway automatically (this seeds missing bootstrap files with full templates)

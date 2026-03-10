@@ -102,6 +102,10 @@ Complete the entire setup—from installation to your first AI interaction—thr
 
 Communicate with AI agents through a modern chat experience. Support for multiple conversation contexts, message history, and rich content rendering with Markdown.
 
+### 🤖 Multi-Agent Management
+
+Create, configure, and switch between multiple AI agents—each with its own model, skills, and SOUL.md personality definition. Support sequential, parallel, and delegation collaboration modes for complex workflows.
+
 ### 📡 Multi-Channel Management
 
 Configure and monitor multiple AI channels simultaneously. Each channel operates independently, allowing you to run specialized agents for different tasks.
@@ -298,7 +302,7 @@ Chain multiple skills together to create sophisticated automation pipelines. Pro
 │   ├── lib/                 # Unified frontend API + error model
 │   ├── stores/              # Zustand stores (settings/chat/gateway)
 │   ├── components/          # Reusable UI components
-│   ├── pages/               # Setup/Dashboard/Chat/Channels/Skills/Cron/Settings
+│   ├── pages/               # Setup/Dashboard/Chat/Agents/Channels/Skills/Cron/Settings
 │   ├── i18n/                # Localization resources
 │   └── types/               # TypeScript type definitions
 ├── tests/

@@ -102,6 +102,10 @@ ClawPlus 直接基于官方 **OpenClaw** 核心构建。无需单独安装，我
 
 通过现代化的聊天体验与 AI 智能体交互。支持多会话上下文、消息历史记录以及 Markdown 富文本渲染。
 
+### 🤖 多智能体管理
+
+创建、配置和切换多个 AI 智能体——每个智能体可拥有独立的模型、技能和 SOUL.md 人格定义。支持顺序、并行和委派等协作模式，轻松应对复杂工作流。
+
 ### 📡 多频道管理
 
 同时配置和监控多个 AI 频道。每个频道独立运行，允许你为不同任务运行专门的智能体。
@@ -298,7 +302,7 @@ ClawPlus 采用 **双进程 + Host API 统一接入架构**。渲染进程只调
 │   ├── lib/                 # 前端统一 API 与错误模型
 │   ├── stores/              # Zustand 状态仓库（settings/chat/gateway）
 │   ├── components/          # 可复用 UI 组件
-│   ├── pages/               # Setup/Dashboard/Chat/Channels/Skills/Cron/Settings
+│   ├── pages/               # Setup/Dashboard/Chat/Agents/Channels/Skills/Cron/Settings
 │   ├── i18n/                # 国际化资源
 │   └── types/               # TypeScript 类型定义
 ├── tests/

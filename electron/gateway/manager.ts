@@ -526,6 +526,18 @@ export class GatewayManager extends EventEmitter {
       checkHealth: () => this.checkHealth(),
       onUnhealthy: (errorMessage) => {
         this.emit('error', new Error(errorMessage));
+        // If health check reveals a stale connection, tear it down and reconnect.
+        if (errorMessage.includes('stale')) {
+          logger.warn('Health check detected stale connection, triggering reconnect');
+          if (this.ws) {
+            try { this.ws.terminate(); } catch { /* ignore */ }
+            this.ws = null;
+          }
+          if (this.status.state === 'running') {
+            this.setStatus({ state: 'stopped' });
+            this.scheduleReconnect();
+          }
+        }
       },
       onError: () => {
         // The monitor already logged the error; nothing else to do here.
@@ -534,18 +546,30 @@ export class GatewayManager extends EventEmitter {
   }
 
   /**
-   * Check Gateway health via WebSocket ping
-   * OpenClaw Gateway doesn't have an HTTP /health endpoint
+   * Check Gateway health by verifying the WebSocket is truly alive.
+   * Uses the pong-based staleness check from the connection monitor, and
+   * falls back to a lightweight RPC probe when the socket looks suspicious.
    */
   async checkHealth(): Promise<{ ok: boolean; error?: string; uptime?: number }> {
     try {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        const uptime = this.status.connectedAt
-          ? Math.floor((Date.now() - this.status.connectedAt) / 1000)
-          : undefined;
-        return { ok: true, uptime };
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return { ok: false, error: 'WebSocket not connected' };
       }
-      return { ok: false, error: 'WebSocket not connected' };
+
+      // If the connection monitor hasn't seen a pong recently, the socket
+      // is very likely a zombie.  Try a fast RPC probe to be sure.
+      if (this.connectionMonitor.isConnectionStale()) {
+        try {
+          await this.rpc('ping', undefined, 5000);
+        } catch {
+          return { ok: false, error: 'WebSocket stale — no pong / ping RPC failed' };
+        }
+      }
+
+      const uptime = this.status.connectedAt
+        ? Math.floor((Date.now() - this.status.connectedAt) / 1000)
+        : undefined;
+      return { ok: true, uptime };
     } catch (error) {
       return { ok: false, error: String(error) };
     }
@@ -689,13 +713,35 @@ export class GatewayManager extends EventEmitter {
   }
 
   /**
-   * Start ping interval to keep connection alive
+   * Start ping interval to keep connection alive.
+   * Also registers a pong listener so the monitor can detect zombie connections
+   * (e.g. after system sleep/resume where the TCP socket is silently broken).
    */
   private startPing(): void {
-    this.connectionMonitor.startPing(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.ping();
-      }
+    // Register pong listener on the current socket so the monitor can track liveness.
+    if (this.ws) {
+      this.ws.on('pong', () => {
+        this.connectionMonitor.recordPong();
+      });
+    }
+
+    this.connectionMonitor.startPing({
+      sendPing: () => {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.ping();
+        }
+      },
+      onDead: () => {
+        logger.warn('Ping/pong dead-connection detected, closing zombie WebSocket');
+        if (this.ws) {
+          try { this.ws.terminate(); } catch { /* ignore */ }
+          this.ws = null;
+        }
+        if (this.status.state === 'running') {
+          this.setStatus({ state: 'stopped' });
+          this.scheduleReconnect();
+        }
+      },
     });
   }
 
