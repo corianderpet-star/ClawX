@@ -51,6 +51,7 @@ import {
 import { validateApiKeyWithProvider } from '../services/providers/provider-validation';
 import { appUpdater } from './updater';
 import { PORTS } from '../utils/config';
+import { exportBackup, importBackup, getBackupSummary, type ImportOptions, DEFAULT_IMPORT_OPTIONS, type BackupManifest } from '../utils/migration';
 
 type AppRequest = {
   id?: string;
@@ -135,6 +136,9 @@ export function registerIpcHandlers(
 
   // File staging handlers (upload/send separation)
   registerFileHandlers();
+
+  // Migration / backup handlers
+  registerMigrationHandlers(mainWindow);
 }
 
 type HostApiFetchRequest = {
@@ -887,7 +891,7 @@ function registerCronHandlers(gatewayManager: GatewayManager): void {
   });
 
   // Create a new cron job
-  // UI-created tasks have no delivery target — results go to the ClawX chat page.
+  // UI-created tasks have no delivery target — results go to the ClawPlus chat page.
   // Tasks created via external channels (Feishu, Discord, etc.) are handled
   // directly by the OpenClaw Gateway and do not pass through this IPC handler.
   ipcMain.handle('cron:create', async (_, input: {
@@ -904,7 +908,7 @@ function registerCronHandlers(gatewayManager: GatewayManager): void {
         enabled: input.enabled ?? true,
         wakeMode: 'next-heartbeat',
         sessionTarget: 'isolated',
-        // UI-created jobs deliver results via ClawX WebSocket chat events,
+        // UI-created jobs deliver results via ClawPlus WebSocket chat events,
         // not external messaging channels.  Setting mode='none' prevents
         // the Gateway from attempting channel delivery (which would fail
         // with "Channel is required" when no channels are configured).
@@ -1373,6 +1377,56 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
     }
   }
 
+  async function ensureQQBotPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
+    const targetDir = join(homedir(), '.openclaw', 'extensions', 'qqbot');
+    const targetManifest = join(targetDir, 'openclaw.plugin.json');
+
+    if (existsSync(targetManifest)) {
+      logger.info('QQBot plugin already installed from local mirror');
+      return { installed: true };
+    }
+
+    const candidateSources = app.isPackaged
+      ? [
+        join(process.resourcesPath, 'openclaw-plugins', 'qqbot'),
+        join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', 'qqbot'),
+        join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', 'qqbot')
+      ]
+      : [
+        join(app.getAppPath(), 'build', 'openclaw-plugins', 'qqbot'),
+        join(process.cwd(), 'build', 'openclaw-plugins', 'qqbot'),
+        join(__dirname, '../../build/openclaw-plugins/qqbot'),
+      ];
+
+    const sourceDir = candidateSources.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
+    if (!sourceDir) {
+      logger.warn('Bundled QQBot plugin mirror not found in candidate paths', { candidateSources });
+      return {
+        installed: false,
+        warning: `Bundled QQBot plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
+      };
+    }
+
+    try {
+      mkdirSync(join(homedir(), '.openclaw', 'extensions'), { recursive: true });
+      rmSync(targetDir, { recursive: true, force: true });
+      cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
+
+      if (!existsSync(targetManifest)) {
+        return { installed: false, warning: 'Failed to install QQBot plugin mirror (manifest missing).' };
+      }
+
+      logger.info(`Installed QQBot plugin from bundled mirror: ${sourceDir}`);
+      return { installed: true };
+    } catch (error) {
+      logger.warn('Failed to install QQBot plugin from bundled mirror:', error);
+      return {
+        installed: false,
+        warning: 'Failed to install bundled QQBot plugin mirror',
+      };
+    }
+  }
+
   // Get OpenClaw package status
   ipcMain.handle('openclaw:status', () => {
     const status = getOpenClawStatus();
@@ -1432,6 +1486,27 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
           return {
             success: false,
             error: installResult.warning || 'DingTalk plugin install failed',
+          };
+        }
+        await saveChannelConfig(channelType, config);
+        if (gatewayManager.getStatus().state !== 'stopped') {
+          logger.info(`Scheduling Gateway reload after channel:saveConfig (${channelType})`);
+          gatewayManager.debouncedReload();
+        } else {
+          logger.info(`Gateway is stopped; skip immediate reload after channel:saveConfig (${channelType})`);
+        }
+        return {
+          success: true,
+          pluginInstalled: installResult.installed,
+          warning: installResult.warning,
+        };
+      }
+      if (channelType === 'qqbot') {
+        const installResult = await ensureQQBotPluginInstalled();
+        if (!installResult.installed) {
+          return {
+            success: false,
+            error: installResult.warning || 'QQBot plugin install failed',
           };
         }
         await saveChannelConfig(channelType, config);
@@ -2132,6 +2207,104 @@ function registerSettingsHandlers(gatewayManager: GatewayManager): void {
     await handleProxySettingsChange();
     return { success: true, settings };
   });
+
+  // Background image/video management
+  const bgMimeTypes: Record<string, string> = {
+    '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp', '.svg': 'image/svg+xml',
+    '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  };
+  const videoExts = new Set(['.mp4', '.webm', '.mov']);
+
+  ipcMain.handle('settings:selectBackgroundImage', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Select Background',
+      filters: [
+        { name: 'Images & Videos', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'mp4', 'webm', 'mov'] },
+        { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'] },
+        { name: 'Videos', extensions: ['mp4', 'webm', 'mov'] },
+      ],
+      properties: ['openFile'],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+
+    const srcPath = result.filePaths[0];
+    const ext = extname(srcPath).toLowerCase();
+    const isVideo = videoExts.has(ext);
+    const destDir = join(app.getPath('userData'), 'backgrounds');
+    const destName = `bg-${Date.now()}${ext}`;
+    const destPath = join(destDir, destName);
+
+    try {
+      mkdirSync(destDir, { recursive: true });
+      // Remove old background if exists
+      const oldPath = await getSetting('backgroundImage');
+      if (oldPath) {
+        const { unlink } = await import('fs/promises');
+        try { await unlink(oldPath); } catch { /* ignore */ }
+      }
+      const { copyFile } = await import('fs/promises');
+      await copyFile(srcPath, destPath);
+      await setSetting('backgroundImage', destPath);
+      await setSetting('backgroundType', isVideo ? 'video' : 'image');
+
+      const mime = bgMimeTypes[ext] || (isVideo ? 'video/mp4' : 'image/png');
+
+      // For images, return data URL for preview; for videos, use protocol URL
+      let dataUrl = '';
+      if (!isVideo) {
+        const { readFile } = await import('fs/promises');
+        const data = await readFile(destPath);
+        dataUrl = `data:${mime};base64,${data.toString('base64')}`;
+      }
+
+      return { success: true, path: destPath, dataUrl, isVideo, mimeType: mime };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('settings:removeBackgroundImage', async () => {
+    try {
+      const currentPath = await getSetting('backgroundImage');
+      if (currentPath) {
+        const { unlink } = await import('fs/promises');
+        try { await unlink(currentPath); } catch { /* ignore */ }
+      }
+      await setSetting('backgroundImage', '');
+      await setSetting('backgroundType', '');
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('settings:getBackgroundImageDataUrl', async () => {
+    const imagePath = await getSetting('backgroundImage');
+    if (!imagePath || !existsSync(imagePath)) {
+      return { success: true, dataUrl: '', isVideo: false };
+    }
+    try {
+      const ext = extname(imagePath).toLowerCase();
+      const isVideo = videoExts.has(ext);
+      const mime = bgMimeTypes[ext] || (isVideo ? 'video/mp4' : 'image/png');
+
+      if (isVideo) {
+        // For videos, return protocol URL instead of data URL
+        return { success: true, dataUrl: '', isVideo: true, mimeType: mime };
+      }
+
+      const { readFile } = await import('fs/promises');
+      const data = await readFile(imagePath);
+      const dataUrl = `data:${mime};base64,${data.toString('base64')}`;
+      return { success: true, dataUrl, isVideo: false, mimeType: mime };
+    } catch {
+      return { success: true, dataUrl: '', isVideo: false };
+    }
+  });
 }
 function registerUsageHandlers(): void {
   ipcMain.handle('usage:recentTokenHistory', async (_, limit?: number) => {
@@ -2504,6 +2677,176 @@ function registerSessionHandlers(): void {
       return { success: true };
     } catch (err) {
       logger.error(`[session:delete] Unexpected error for ${sessionKey}:`, err);
+      return { success: false, error: String(err) };
+    }
+  });
+}
+
+/**
+ * Migration / Backup IPC handlers
+ */
+function registerMigrationHandlers(mainWindow: BrowserWindow): void {
+  // Get backup summary (preview before export)
+  ipcMain.handle('migration:summary', async () => {
+    try {
+      return await getBackupSummary();
+    } catch (err) {
+      logger.error('[migration:summary] Error:', err);
+      throw err;
+    }
+  });
+
+  // Export backup — show save dialog, collect data, write file
+  ipcMain.handle('migration:export', async () => {
+    try {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Backup',
+        defaultPath: `clawxplus-backup-${new Date().toISOString().slice(0, 10)}.clawxbackup`,
+        filters: [
+          { name: 'ClawPlus Backup', extensions: ['clawxbackup'] },
+        ],
+      });
+
+      if (result.canceled || !result.filePath) {
+        return { success: false, canceled: true };
+      }
+
+      // Send progress to renderer
+      const sendProgress = (progress: { stage: string; current: number; total: number }) => {
+        try {
+          mainWindow.webContents.send('migration:progress', progress);
+        } catch { /* window may be closed */ }
+      };
+
+      const manifest = await exportBackup(sendProgress);
+      const json = JSON.stringify(manifest);
+      const { writeFile: writeFileAsync } = await import('fs/promises');
+      await writeFileAsync(result.filePath, json, 'utf-8');
+
+      const sizeMB = (Buffer.byteLength(json, 'utf-8') / (1024 * 1024)).toFixed(1);
+      logger.info(`[migration:export] Backup saved to ${result.filePath} (${sizeMB} MB)`);
+
+      return {
+        success: true,
+        filePath: result.filePath,
+        sizeMB: parseFloat(sizeMB),
+        stats: {
+          skills: manifest.skills.length,
+          chatSessions: manifest.chatSessions.length,
+          hasProviders: !!manifest.providers,
+          hasSettings: !!manifest.settings,
+        },
+      };
+    } catch (err) {
+      logger.error('[migration:export] Error:', err);
+      return { success: false, error: String(err) };
+    }
+  });
+
+  // Import backup — show open dialog, parse file, restore data
+  ipcMain.handle('migration:import', async (_, importOptions?: Partial<ImportOptions>) => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Import Backup',
+        filters: [
+          { name: 'ClawPlus Backup', extensions: ['clawxbackup'] },
+        ],
+        properties: ['openFile'],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true };
+      }
+
+      const filePath = result.filePaths[0];
+      const { readFile: readFileAsync } = await import('fs/promises');
+      const raw = await readFileAsync(filePath, 'utf-8');
+
+      let manifest: BackupManifest;
+      try {
+        manifest = JSON.parse(raw) as BackupManifest;
+      } catch {
+        return { success: false, error: 'Invalid backup file format' };
+      }
+
+      // Validate manifest
+      if (!manifest.version || !manifest.createdAt) {
+        return { success: false, error: 'Invalid backup file: missing version or creation date' };
+      }
+
+      const sendProgress = (progress: { stage: string; current: number; total: number }) => {
+        try {
+          mainWindow.webContents.send('migration:progress', progress);
+        } catch { /* window may be closed */ }
+      };
+
+      const options: ImportOptions = { ...DEFAULT_IMPORT_OPTIONS, ...importOptions };
+      const importResult = await importBackup(manifest, options, sendProgress);
+
+      logger.info('[migration:import] Result:', importResult);
+
+      return {
+        success: importResult.success,
+        restored: importResult.restored,
+        skipped: importResult.skipped,
+        errors: importResult.errors,
+        backupInfo: {
+          appVersion: manifest.appVersion,
+          createdAt: manifest.createdAt,
+          platform: manifest.platform,
+        },
+      };
+    } catch (err) {
+      logger.error('[migration:import] Error:', err);
+      return { success: false, error: String(err) };
+    }
+  });
+
+  // Preview backup file contents without importing
+  ipcMain.handle('migration:preview', async () => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Preview Backup',
+        filters: [
+          { name: 'ClawPlus Backup', extensions: ['clawxbackup'] },
+        ],
+        properties: ['openFile'],
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true };
+      }
+
+      const filePath = result.filePaths[0];
+      const { readFile: readFileAsync } = await import('fs/promises');
+      const raw = await readFileAsync(filePath, 'utf-8');
+
+      let manifest: BackupManifest;
+      try {
+        manifest = JSON.parse(raw) as BackupManifest;
+      } catch {
+        return { success: false, error: 'Invalid backup file format' };
+      }
+
+      return {
+        success: true,
+        filePath,
+        info: {
+          appVersion: manifest.appVersion,
+          createdAt: manifest.createdAt,
+          platform: manifest.platform,
+          hasSettings: !!manifest.settings,
+          hasProviders: !!manifest.providers,
+          hasOpenclawConfig: !!manifest.openclawConfig,
+          hasOpenclawAuth: !!manifest.openclawAuth,
+          skillsCount: manifest.skills?.length || 0,
+          chatSessionsCount: manifest.chatSessions?.length || 0,
+          hasCronTasks: !!(manifest.cronTasks && manifest.cronTasks.length > 0),
+          hasBackgroundImage: !!manifest.backgroundImage,
+        },
+      };
+    } catch (err) {
+      logger.error('[migration:preview] Error:', err);
       return { success: false, error: String(err) };
     }
   });

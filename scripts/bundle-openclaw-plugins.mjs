@@ -6,6 +6,7 @@
  * Build a self-contained mirror of OpenClaw third-party plugins for packaging.
  * Current plugins:
  *   - @soimy/dingtalk -> build/openclaw-plugins/dingtalk
+ *   - @sliverp/qqbot  -> build/openclaw-plugins/qqbot
  *
  * The output plugin directory contains:
  *   - plugin source files (index.ts, openclaw.plugin.json, package.json, ...)
@@ -33,6 +34,7 @@ function normWin(p) {
 
 const PLUGINS = [
   { npmName: '@soimy/dingtalk', pluginId: 'dingtalk' },
+  { npmName: '@sliverp/qqbot', pluginId: 'qqbot' },
 ];
 
 function getVirtualStoreNodeModules(realPkgPath) {
@@ -111,7 +113,9 @@ function bundleOnePlugin({ npmName, pluginId }) {
     for (const peer of Object.keys(pluginPkg.peerDependencies || {})) {
       SKIP_PACKAGES.add(peer);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   while (queue.length > 0) {
     const { nodeModulesDir, skipPkg } = queue.shift();

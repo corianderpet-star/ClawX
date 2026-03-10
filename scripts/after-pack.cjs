@@ -19,7 +19,15 @@
  *      @mariozechner/clipboard).
  */
 
-const { cpSync, existsSync, readdirSync, rmSync, statSync, mkdirSync, realpathSync } = require('fs');
+const {
+  cpSync,
+  existsSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  mkdirSync,
+  realpathSync,
+} = require('fs');
 const { join, dirname, basename } = require('path');
 
 // On Windows, paths in pnpm's virtual store can exceed the default MAX_PATH
@@ -45,32 +53,52 @@ function resolveArch(archEnum) {
 function cleanupUnnecessaryFiles(dir) {
   let removedCount = 0;
 
-  const REMOVE_DIRS = new Set([
-    'test', 'tests', '__tests__', '.github', 'examples', 'example',
-  ]);
+  const REMOVE_DIRS = new Set(['test', 'tests', '__tests__', '.github', 'examples', 'example']);
   const REMOVE_FILE_EXTS = ['.d.ts', '.d.ts.map', '.js.map', '.mjs.map', '.ts.map', '.markdown'];
   const REMOVE_FILE_NAMES = new Set([
-    '.DS_Store', 'README.md', 'CHANGELOG.md', 'LICENSE.md', 'CONTRIBUTING.md',
-    'tsconfig.json', '.npmignore', '.eslintrc', '.prettierrc', '.editorconfig',
+    '.DS_Store',
+    'README.md',
+    'CHANGELOG.md',
+    'LICENSE.md',
+    'CONTRIBUTING.md',
+    'tsconfig.json',
+    '.npmignore',
+    '.eslintrc',
+    '.prettierrc',
+    '.editorconfig',
   ]);
 
   function walk(currentDir) {
     let entries;
-    try { entries = readdirSync(currentDir, { withFileTypes: true }); } catch { return; }
+    try {
+      entries = readdirSync(currentDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
 
     for (const entry of entries) {
       const fullPath = join(currentDir, entry.name);
 
       if (entry.isDirectory()) {
         if (REMOVE_DIRS.has(entry.name)) {
-          try { rmSync(fullPath, { recursive: true, force: true }); removedCount++; } catch { /* */ }
+          try {
+            rmSync(fullPath, { recursive: true, force: true });
+            removedCount++;
+          } catch {
+            /* */
+          }
         } else {
           walk(fullPath);
         }
       } else if (entry.isFile()) {
         const name = entry.name;
-        if (REMOVE_FILE_NAMES.has(name) || REMOVE_FILE_EXTS.some(e => name.endsWith(e))) {
-          try { rmSync(fullPath, { force: true }); removedCount++; } catch { /* */ }
+        if (REMOVE_FILE_NAMES.has(name) || REMOVE_FILE_EXTS.some((e) => name.endsWith(e))) {
+          try {
+            rmSync(fullPath, { force: true });
+            removedCount++;
+          } catch {
+            /* */
+          }
         }
       }
     }
@@ -92,7 +120,12 @@ function cleanupKoffi(nodeModulesDir, platform, arch) {
   let removed = 0;
   for (const entry of readdirSync(koffiDir)) {
     if (entry !== keepTarget) {
-      try { rmSync(join(koffiDir, entry), { recursive: true, force: true }); removed++; } catch { /* */ }
+      try {
+        rmSync(join(koffiDir, entry), { recursive: true, force: true });
+        removed++;
+      } catch {
+        /* */
+      }
     }
   }
   return removed;
@@ -122,15 +155,15 @@ function cleanupNativePlatformPackages(nodeModulesDir, platform, arch) {
       const pkgPlatform = match[1];
       const pkgArch = match[2];
 
-      const isMatch =
-        pkgPlatform === platform &&
-        (pkgArch === arch || pkgArch === 'universal');
+      const isMatch = pkgPlatform === platform && (pkgArch === arch || pkgArch === 'universal');
 
       if (!isMatch) {
         try {
           rmSync(join(scopeDir, entry), { recursive: true, force: true });
           removed++;
-        } catch { /* */ }
+        } catch {
+          /* */
+        }
       }
     }
   }
@@ -147,18 +180,19 @@ function cleanupNativePlatformPackages(nodeModulesDir, platform, arch) {
 const MODULE_PATCHES = {
   // node-domexception@1.0.0: index.js sets module.exports = undefined.
   // Node.js 18+ ships DOMException as a built-in; this shim re-exports it.
-  'node-domexception/index.js': [
-    "'use strict';",
-    '// Shim: original transpiled file sets module.exports = exports.default (undefined).',
-    '// Node.js 18+ has DOMException as a built-in global.',
-    'const dom = globalThis.DOMException ||',
-    '  class DOMException extends Error {',
-    "    constructor(msg, name) { super(msg); this.name = name || 'Error'; }",
-    '  };',
-    'module.exports = dom;',
-    'module.exports.DOMException = dom;',
-    'module.exports.default = dom;',
-  ].join('\n') + '\n',
+  'node-domexception/index.js':
+    [
+      "'use strict';",
+      '// Shim: original transpiled file sets module.exports = exports.default (undefined).',
+      '// Node.js 18+ has DOMException as a built-in global.',
+      'const dom = globalThis.DOMException ||',
+      '  class DOMException extends Error {',
+      "    constructor(msg, name) { super(msg); this.name = name || 'Error'; }",
+      '  };',
+      'module.exports = dom;',
+      'module.exports.DOMException = dom;',
+      'module.exports.default = dom;',
+    ].join('\n') + '\n',
 };
 
 function patchBrokenModules(nodeModulesDir) {
@@ -202,7 +236,11 @@ function listPkgs(nodeModulesDir) {
     const fullPath = join(nodeModulesDir, entry);
     if (entry.startsWith('@')) {
       let subs;
-      try { subs = readdirSync(normWin(fullPath)); } catch { continue; }
+      try {
+        subs = readdirSync(normWin(fullPath));
+      } catch {
+        continue;
+      }
       for (const sub of subs) {
         result.push({ name: `${entry}/${sub}`, fullPath: join(fullPath, sub) });
       }
@@ -221,7 +259,11 @@ function bundlePlugin(nodeModulesRoot, npmName, destDir) {
   }
 
   let realPluginPath;
-  try { realPluginPath = realpathSync(normWin(pkgPath)); } catch { realPluginPath = pkgPath; }
+  try {
+    realPluginPath = realpathSync(normWin(pkgPath));
+  } catch {
+    realPluginPath = pkgPath;
+  }
 
   // Copy plugin package itself
   if (existsSync(normWin(destDir))) rmSync(normWin(destDir), { recursive: true, force: true });
@@ -244,21 +286,25 @@ function bundlePlugin(nodeModulesRoot, npmName, destDir) {
   const SKIP_PACKAGES = new Set(['typescript', '@playwright/test']);
   const SKIP_SCOPES = ['@types/'];
   try {
-    const pluginPkg = JSON.parse(
-      require('fs').readFileSync(join(destDir, 'package.json'), 'utf8')
-    );
+    const pluginPkg = JSON.parse(require('fs').readFileSync(join(destDir, 'package.json'), 'utf8'));
     for (const peer of Object.keys(pluginPkg.peerDependencies || {})) {
       SKIP_PACKAGES.add(peer);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   while (queue.length > 0) {
     const { nodeModulesDir, skipPkg } = queue.shift();
     for (const { name, fullPath } of listPkgs(nodeModulesDir)) {
       if (name === skipPkg) continue;
-      if (SKIP_PACKAGES.has(name) || SKIP_SCOPES.some(s => name.startsWith(s))) continue;
+      if (SKIP_PACKAGES.has(name) || SKIP_SCOPES.some((s) => name.startsWith(s))) continue;
       let rp;
-      try { rp = realpathSync(normWin(fullPath)); } catch { continue; }
+      try {
+        rp = realpathSync(normWin(fullPath));
+      } catch {
+        continue;
+      }
       if (collected.has(rp)) continue;
       collected.set(rp, name);
       const depVirtualNM = getVirtualStoreNodeModules(rp);
@@ -314,14 +360,16 @@ exports.default = async function afterPack(context) {
   const pluginsDestRoot = join(resourcesDir, 'openclaw-plugins');
 
   if (!existsSync(src)) {
-    console.warn('[after-pack] ⚠️  build/openclaw/node_modules not found. Run bundle-openclaw first.');
+    console.warn(
+      '[after-pack] ⚠️  build/openclaw/node_modules not found. Run bundle-openclaw first.'
+    );
     return;
   }
 
   // 1. Copy node_modules (electron-builder skips it due to .gitignore)
-  const depCount = readdirSync(src, { withFileTypes: true })
-    .filter(d => d.isDirectory() && d.name !== '.bin')
-    .length;
+  const depCount = readdirSync(src, { withFileTypes: true }).filter(
+    (d) => d.isDirectory() && d.name !== '.bin'
+  ).length;
 
   console.log(`[after-pack] Copying ${depCount} openclaw dependencies to ${dest} ...`);
   cpSync(src, dest, { recursive: true });
@@ -338,6 +386,7 @@ exports.default = async function afterPack(context) {
   //     - node_modules/ is excluded by .gitignore so the deps copy must be manual
   const BUNDLED_PLUGINS = [
     { npmName: '@soimy/dingtalk', pluginId: 'dingtalk' },
+    { npmName: '@sliverp/qqbot', pluginId: 'qqbot' },
   ];
 
   mkdirSync(pluginsDestRoot, { recursive: true });
@@ -363,7 +412,9 @@ exports.default = async function afterPack(context) {
   // 3. Platform-specific: strip koffi non-target platform binaries
   const koffiRemoved = cleanupKoffi(dest, platform, arch);
   if (koffiRemoved > 0) {
-    console.log(`[after-pack] ✅ koffi: removed ${koffiRemoved} non-target platform binaries (kept ${platform}_${arch}).`);
+    console.log(
+      `[after-pack] ✅ koffi: removed ${koffiRemoved} non-target platform binaries (kept ${platform}_${arch}).`
+    );
   }
 
   // 4. Platform-specific: strip wrong-platform native packages

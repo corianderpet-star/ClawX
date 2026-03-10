@@ -1,6 +1,6 @@
 {
   "title": "设置",
-  "subtitle": "配置您的 ClawX 体验",
+  "subtitle": "配置您的 clawPlus 体验",
   "appearance": {
     "title": "外观",
     "description": "自定义外观和风格",
@@ -8,7 +8,30 @@
     "light": "浅色",
     "dark": "深色",
     "system": "跟随系统",
-    "language": "语言"
+    "language": "语言",
+    "themeColor": "主题色",
+    "customColor": "自定义",
+    "colors": {
+      "blue": "蓝色",
+      "violet": "紫色",
+      "rose": "玫瑰",
+      "orange": "橙色",
+      "green": "绿色",
+      "amber": "琥珀",
+      "teal": "青色",
+      "slate": "石板灰"
+    },
+    "background": "背景图片 / 动态壁纸",
+    "uploadBackground": "上传图片或视频",
+    "changeBackground": "更换",
+    "removeBackground": "移除",
+    "backgroundOpacity": "背景透明度",
+    "backgroundBlur": "背景模糊度",
+    "noBackgroundSet": "未设置背景",
+    "backgroundSelected": "背景已更新",
+    "backgroundRemoved": "背景已移除",
+    "backgroundFailed": "设置背景失败",
+    "videoHint": "支持 MP4 / WebM 视频作为动态背景"
   },
   "aiProviders": {
     "title": "AI 模型提供商",
@@ -35,7 +58,7 @@
     "notRequired": "非必填",
     "empty": {
       "title": "未配置提供商",
-      "desc": "添加 AI 提供商以开始使用 ClawX",
+      "desc": "添加 AI 提供商以开始使用 clawPlus",
       "cta": "添加您的第一个提供商"
     },
     "dialog": {
@@ -116,7 +139,7 @@
     "appLogs": "应用日志",
     "openFolder": "打开文件夹",
     "autoStart": "自动启动网关",
-    "autoStartDesc": "ClawX 启动时自动启动网关",
+    "autoStartDesc": "clawPlus 启动时自动启动网关",
     "proxyTitle": "代理",
     "proxyDesc": "让 Electron 和 Gateway 的网络请求都走本地代理客户端。",
     "proxyServer": "代理服务器",
@@ -137,7 +160,7 @@
   },
   "updates": {
     "title": "更新",
-    "description": "保持 ClawX 最新",
+    "description": "保持 clawPlus 最新",
     "autoCheck": "自动检查更新",
     "autoCheckDesc": "启动时检查更新",
     "autoDownload": "自动更新",
@@ -226,9 +249,55 @@
     "installMessage": "安装 \"openclaw\" 命令？",
     "installDetail": "这将创建 ~/.local/bin/openclaw。确保 ~/.local/bin 在您的 PATH 中。"
   },
+  "models": {
+    "title": "模型",
+    "subtitle": "管理 AI 提供商和监控 Token 使用情况"
+  },
+  "migration": {
+    "title": "数据迁移",
+    "description": "一键导出或导入您的所有数据，方便更换电脑",
+    "export": {
+      "title": "导出备份",
+      "description": "将设置、模型配置、聊天记录、技能等打包为备份文件",
+      "button": "导出数据",
+      "exporting": "正在导出...",
+      "success": "备份已导出",
+      "successDetail": "备份文件已保存 ({{size}} MB)",
+      "error": "导出失败"
+    },
+    "import": {
+      "title": "导入备份",
+      "description": "从备份文件恢复所有数据（建议导入后重启应用）",
+      "button": "导入数据",
+      "importing": "正在导入...",
+      "success": "数据已恢复",
+      "successDetail": "已恢复 {{count}} 项数据，需要重启应用生效",
+      "error": "导入失败",
+      "invalidFile": "无效的备份文件",
+      "restart": "立即重启",
+      "restartLater": "稍后重启"
+    },
+    "summary": {
+      "providers": "{{count}} 个模型配置",
+      "channels": "{{count}} 个频道配置",
+      "skills": "{{count}} 个技能",
+      "chatSessions": "{{count}} 条聊天记录",
+      "settings": "应用设置",
+      "backgroundImage": "背景图片"
+    },
+    "stage": {
+      "settings": "导出设置...",
+      "providers": "导出模型配置...",
+      "openclawConfig": "导出 OpenClaw 配置...",
+      "openclawAuth": "导出认证信息...",
+      "skills": "导出技能...",
+      "chatSessions": "导出聊天记录...",
+      "backgroundImage": "导出背景图片..."
+    }
+  },
   "about": {
     "title": "关于",
-    "appName": "ClawX",
+    "appName": "clawPlus",
     "tagline": "图形化 AI 助手",
     "basedOn": "基于 OpenClaw",
     "version": "版本 {{version}}",

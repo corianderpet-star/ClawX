@@ -40,8 +40,12 @@ describe('skills store error mapping', () => {
     expect(useSkillsStore.getState().searchError).toBe('searchTimeoutError');
   });
 
-  it('maps installSkill timeout result into installTimeoutError', async () => {
-    hostApiFetchMock.mockResolvedValueOnce({ success: false, error: 'request timeout' });
+  it('maps installSkill timeout result into installTimeoutError', { timeout: 15000 }, async () => {
+    // Mock must cover all retry attempts (up to 3 total)
+    hostApiFetchMock
+      .mockResolvedValueOnce({ success: false, error: 'request timeout' })
+      .mockResolvedValueOnce({ success: false, error: 'request timeout' })
+      .mockResolvedValueOnce({ success: false, error: 'request timeout' });
 
     const { useSkillsStore } = await import('@/stores/skills');
     await expect(useSkillsStore.getState().installSkill('demo-skill')).rejects.toThrow('installTimeoutError');

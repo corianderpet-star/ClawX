@@ -111,6 +111,20 @@ export async function saveChannelConfig(
         }
     }
 
+    // QQBot is a channel plugin; make sure it's explicitly allowed.
+    if (channelType === 'qqbot') {
+        if (!currentConfig.plugins) {
+            currentConfig.plugins = {};
+        }
+        currentConfig.plugins.enabled = true;
+        const allow = Array.isArray(currentConfig.plugins.allow)
+            ? currentConfig.plugins.allow as string[]
+            : [];
+        if (!allow.includes('qqbot')) {
+            currentConfig.plugins.allow = [...allow, 'qqbot'];
+        }
+    }
+
     // Plugin-based channels (e.g. WhatsApp) go under plugins.entries, not channels
     if (PLUGIN_CHANNELS.includes(channelType)) {
         if (!currentConfig.plugins) {

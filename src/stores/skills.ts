@@ -49,8 +49,29 @@ function mapErrorCodeToSkillErrorKey(
         ? 'installRateLimitError'
         : 'fetchRateLimitError';
   }
-  return 'rateLimitError';
+  if (code === 'NETWORK') {
+    return operation === 'search'
+      ? 'searchNetworkError'
+      : operation === 'install'
+        ? 'installNetworkError'
+        : 'fetchNetworkError';
+  }
+  return operation === 'search'
+    ? 'searchGenericError'
+    : operation === 'install'
+      ? 'installGenericError'
+      : 'fetchGenericError';
 }
+
+/** Error keys that are retryable */
+const RETRYABLE_KEYS = new Set(['installRateLimitError', 'installNetworkError', 'installTimeoutError']);
+
+/** Known error keys emitted by skill operations */
+export const KNOWN_SKILL_ERROR_KEYS = new Set([
+  'installTimeoutError', 'installRateLimitError', 'installNetworkError', 'installGenericError',
+  'searchTimeoutError', 'searchRateLimitError', 'searchNetworkError', 'searchGenericError',
+  'fetchTimeoutError', 'fetchRateLimitError', 'fetchNetworkError', 'fetchGenericError',
+]);
 
 interface SkillsState {
   skills: Skill[];
@@ -72,6 +93,12 @@ interface SkillsState {
   updateSkill: (skillId: string, updates: Partial<Skill>) => void;
 }
 
+/** Deduplication: if a fetchSkills is already in-flight, return the same promise. */
+let fetchSkillsInflight: Promise<void> | null = null;
+/** Minimum interval (ms) between fetchSkills calls to reduce backend pressure. */
+const FETCH_SKILLS_COOLDOWN_MS = 5_000;
+let lastFetchSkillsAt = 0;
+
 export const useSkillsStore = create<SkillsState>((set, get) => ({
   skills: [],
   searchResults: [],
@@ -82,80 +109,97 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   error: null,
 
   fetchSkills: async () => {
-    // Only show loading state if we have no skills yet (initial load)
-    if (get().skills.length === 0) {
-      set({ loading: true, error: null });
+    // Dedup: reuse in-flight request
+    if (fetchSkillsInflight) {
+      return fetchSkillsInflight;
     }
-    try {
-      // 1. Fetch from Gateway (running skills)
-      const gatewayData = await useGatewayStore.getState().rpc<GatewaySkillsStatusResult>('skills.status');
 
-      // 2. Fetch from ClawHub (installed on disk)
-      const clawhubResult = await hostApiFetch<{ success: boolean; results?: ClawHubListResult[]; error?: string }>('/api/clawhub/list');
-
-      // 3. Fetch configurations directly from Electron (since Gateway doesn't return them)
-      const configResult = await hostApiFetch<Record<string, { apiKey?: string; env?: Record<string, string> }>>('/api/skills/configs');
-
-      let combinedSkills: Skill[] = [];
-      const currentSkills = get().skills;
-
-      // Map gateway skills info
-      if (gatewayData.skills) {
-        combinedSkills = gatewayData.skills.map((s: GatewaySkillStatus) => {
-          // Merge with direct config if available
-          const directConfig = configResult[s.skillKey] || {};
-
-          return {
-            id: s.skillKey,
-            slug: s.slug || s.skillKey,
-            name: s.name || s.skillKey,
-            description: s.description || '',
-            enabled: !s.disabled,
-            icon: s.emoji || '📦',
-            version: s.version || '1.0.0',
-            author: s.author,
-            config: {
-              ...(s.config || {}),
-              ...directConfig,
-            },
-            isCore: s.bundled && s.always,
-            isBundled: s.bundled,
-          };
-        });
-      } else if (currentSkills.length > 0) {
-        // ... if gateway down ...
-        combinedSkills = [...currentSkills];
-      }
-
-      // Merge with ClawHub results
-      if (clawhubResult.success && clawhubResult.results) {
-        clawhubResult.results.forEach((cs: ClawHubListResult) => {
-          const existing = combinedSkills.find(s => s.id === cs.slug);
-          if (!existing) {
-            const directConfig = configResult[cs.slug] || {};
-            combinedSkills.push({
-              id: cs.slug,
-              slug: cs.slug,
-              name: cs.slug,
-              description: 'Recently installed, initializing...',
-              enabled: false,
-              icon: '⌛',
-              version: cs.version || 'unknown',
-              author: undefined,
-              config: directConfig,
-              isCore: false,
-              isBundled: false,
-            });
-          }
-        });
-      }
-
-      set({ skills: combinedSkills, loading: false });
-    } catch (error) {
-      console.error('Failed to fetch skills:', error);
-      const appError = normalizeAppError(error, { module: 'skills', operation: 'fetch' });
-      set({ loading: false, error: mapErrorCodeToSkillErrorKey(appError.code, 'fetch') });
+    // Cooldown: skip if called too recently (unless we have zero skills – first load)
+    const now = Date.now();
+    if (get().skills.length > 0 && now - lastFetchSkillsAt < FETCH_SKILLS_COOLDOWN_MS) {
+      return;
     }
+
+    const doFetch = async () => {
+      // Only show loading state if we have no skills yet (initial load)
+      if (get().skills.length === 0) {
+        set({ loading: true, error: null });
+      }
+      try {
+        // 1. Fetch from Gateway (running skills)
+        const gatewayData = await useGatewayStore.getState().rpc<GatewaySkillsStatusResult>('skills.status');
+
+        // 2. Fetch from ClawHub (installed on disk)
+        const clawhubResult = await hostApiFetch<{ success: boolean; results?: ClawHubListResult[]; error?: string }>('/api/clawhub/list');
+
+        // 3. Fetch configurations directly from Electron (since Gateway doesn't return them)
+        const configResult = await hostApiFetch<Record<string, { apiKey?: string; env?: Record<string, string> }>>('/api/skills/configs');
+
+        let combinedSkills: Skill[] = [];
+        const currentSkills = get().skills;
+
+        // Map gateway skills info
+        if (gatewayData.skills) {
+          combinedSkills = gatewayData.skills.map((s: GatewaySkillStatus) => {
+            // Merge with direct config if available
+            const directConfig = configResult[s.skillKey] || {};
+
+            return {
+              id: s.skillKey,
+              slug: s.slug || s.skillKey,
+              name: s.name || s.skillKey,
+              description: s.description || '',
+              enabled: !s.disabled,
+              icon: s.emoji || '📦',
+              version: s.version || '1.0.0',
+              author: s.author,
+              config: {
+                ...(s.config || {}),
+                ...directConfig,
+              },
+              isCore: s.bundled && s.always,
+              isBundled: s.bundled,
+            };
+          });
+        } else if (currentSkills.length > 0) {
+          // ... if gateway down ...
+          combinedSkills = [...currentSkills];
+        }
+
+        // Merge with ClawHub results
+        if (clawhubResult.success && clawhubResult.results) {
+          clawhubResult.results.forEach((cs: ClawHubListResult) => {
+            const existing = combinedSkills.find(s => s.id === cs.slug);
+            if (!existing) {
+              const directConfig = configResult[cs.slug] || {};
+              combinedSkills.push({
+                id: cs.slug,
+                slug: cs.slug,
+                name: cs.slug,
+                description: 'Recently installed, initializing...',
+                enabled: false,
+                icon: '⌛',
+                version: cs.version || 'unknown',
+                author: undefined,
+                config: directConfig,
+                isCore: false,
+                isBundled: false,
+              });
+            }
+          });
+        }
+
+        set({ skills: combinedSkills, loading: false });
+      } catch (error) {
+        console.error('Failed to fetch skills:', error);
+        const appError = normalizeAppError(error, { module: 'skills', operation: 'fetch' });
+        set({ loading: false, error: mapErrorCodeToSkillErrorKey(appError.code, 'fetch') });
+      }
+    };
+
+    lastFetchSkillsAt = Date.now();
+    fetchSkillsInflight = doFetch().finally(() => { fetchSkillsInflight = null; });
+    return fetchSkillsInflight;
   },
 
   searchSkills: async (query: string) => {
@@ -184,19 +228,48 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   installSkill: async (slug: string, version?: string) => {
     set((state) => ({ installing: { ...state.installing, [slug]: true } }));
     try {
-      const result = await hostApiFetch<{ success: boolean; error?: string }>('/api/clawhub/install', {
-        method: 'POST',
-        body: JSON.stringify({ slug, version }),
-      });
-      if (!result.success) {
-        const appError = normalizeAppError(new Error(result.error || 'Install failed'), {
-          module: 'skills',
-          operation: 'install',
-        });
-        throw new Error(mapErrorCodeToSkillErrorKey(appError.code, 'install'));
+      const MAX_RETRIES = 2;
+      let lastErrorKey = 'installGenericError';
+
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        if (attempt > 0) {
+          const delay = 2000 * attempt;
+          console.warn(`Install attempt ${attempt + 1}/${MAX_RETRIES + 1} for "${slug}" in ${delay}ms...`);
+          await new Promise((r) => setTimeout(r, delay));
+        }
+
+        try {
+          const result = await hostApiFetch<{ success: boolean; error?: string }>('/api/clawhub/install', {
+            method: 'POST',
+            body: JSON.stringify({ slug, version }),
+          });
+
+          if (result.success) {
+            // Refresh skills after install
+            await get().fetchSkills();
+            return;
+          }
+
+          const appError = normalizeAppError(new Error(result.error || 'Install failed'), {
+            module: 'skills',
+            operation: 'install',
+          });
+          lastErrorKey = mapErrorCodeToSkillErrorKey(appError.code, 'install');
+        } catch (fetchError) {
+          const appError = normalizeAppError(fetchError, {
+            module: 'skills',
+            operation: 'install',
+          });
+          lastErrorKey = mapErrorCodeToSkillErrorKey(appError.code, 'install');
+        }
+
+        // Only retry for retryable error types
+        if (!RETRYABLE_KEYS.has(lastErrorKey) || attempt >= MAX_RETRIES) {
+          break;
+        }
       }
-      // Refresh skills after install
-      await get().fetchSkills();
+
+      throw new Error(lastErrorKey);
     } catch (error) {
       console.error('Install error:', error);
       throw error;

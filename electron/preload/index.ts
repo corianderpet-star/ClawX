@@ -137,6 +137,15 @@ const electronAPI = {
         'openclaw:getConfigDir',
         'openclaw:getSkillsDir',
         'openclaw:getCliCommand',
+        // Background image
+        'settings:selectBackgroundImage',
+        'settings:removeBackgroundImage',
+        'settings:getBackgroundImageDataUrl',
+        // Migration / Backup
+        'migration:summary',
+        'migration:export',
+        'migration:import',
+        'migration:preview',
       ];
 
       if (validChannels.includes(channel)) {
@@ -175,6 +184,7 @@ const electronAPI = {
         'oauth:success',
         'oauth:error',
         'openclaw:cli-installed',
+        'migration:progress',
       ];
 
       if (validChannels.includes(channel)) {

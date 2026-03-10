@@ -1,6 +1,6 @@
 {
   "title": "Settings",
-  "subtitle": "Configure your ClawX experience",
+  "subtitle": "Configure your clawPlus experience",
   "appearance": {
     "title": "Appearance",
     "description": "Customize the look and feel",
@@ -8,7 +8,30 @@
     "light": "Light",
     "dark": "Dark",
     "system": "System",
-    "language": "Language"
+    "language": "Language",
+    "themeColor": "Accent Color",
+    "customColor": "Custom",
+    "colors": {
+      "blue": "Blue",
+      "violet": "Violet",
+      "rose": "Rose",
+      "orange": "Orange",
+      "green": "Green",
+      "amber": "Amber",
+      "teal": "Teal",
+      "slate": "Slate"
+    },
+    "background": "Background",
+    "uploadBackground": "Upload Image or Video",
+    "changeBackground": "Change",
+    "removeBackground": "Remove",
+    "backgroundOpacity": "Background Opacity",
+    "backgroundBlur": "Background Blur",
+    "noBackgroundSet": "No background set",
+    "backgroundSelected": "Background updated",
+    "backgroundRemoved": "Background removed",
+    "backgroundFailed": "Failed to set background",
+    "videoHint": "MP4 / WebM videos supported as dynamic backgrounds"
   },
   "aiProviders": {
     "title": "AI Providers",
@@ -35,7 +58,7 @@
     "notRequired": "Not required",
     "empty": {
       "title": "No providers configured",
-      "desc": "Add an AI provider to start using ClawX",
+      "desc": "Add an AI provider to start using clawPlus",
       "cta": "Add Your First Provider"
     },
     "dialog": {
@@ -116,7 +139,7 @@
     "appLogs": "Application Logs",
     "openFolder": "Open Folder",
     "autoStart": "Auto-start Gateway",
-    "autoStartDesc": "Start Gateway when ClawX launches",
+    "autoStartDesc": "Start Gateway when clawPlus launches",
     "proxyTitle": "Proxy",
     "proxyDesc": "Route Electron and Gateway traffic through your local proxy client.",
     "proxyServer": "Proxy Server",
@@ -137,7 +160,7 @@
   },
   "updates": {
     "title": "Updates",
-    "description": "Keep ClawX up to date",
+    "description": "Keep clawPlus up to date",
     "autoCheck": "Auto-check for updates",
     "autoCheckDesc": "Check for updates on startup",
     "autoDownload": "Auto-update",
@@ -226,9 +249,55 @@
     "installMessage": "Install the \"openclaw\" command?",
     "installDetail": "This will create ~/.local/bin/openclaw. Ensure ~/.local/bin is on your PATH if you want to run it globally."
   },
+  "models": {
+    "title": "Models",
+    "subtitle": "Manage your AI providers and monitor token usage."
+  },
+  "migration": {
+    "title": "Data Migration",
+    "description": "Export or import all your data with one click for easy device transfer",
+    "export": {
+      "title": "Export Backup",
+      "description": "Package settings, model configs, chat history, skills and more into a backup file",
+      "button": "Export Data",
+      "exporting": "Exporting...",
+      "success": "Backup Exported",
+      "successDetail": "Backup file saved ({{size}} MB)",
+      "error": "Export Failed"
+    },
+    "import": {
+      "title": "Import Backup",
+      "description": "Restore all data from a backup file (restart recommended after import)",
+      "button": "Import Data",
+      "importing": "Importing...",
+      "success": "Data Restored",
+      "successDetail": "Restored {{count}} items, restart required to take effect",
+      "error": "Import Failed",
+      "invalidFile": "Invalid backup file",
+      "restart": "Restart Now",
+      "restartLater": "Restart Later"
+    },
+    "summary": {
+      "providers": "{{count}} model configs",
+      "channels": "{{count}} channel configs",
+      "skills": "{{count}} skills",
+      "chatSessions": "{{count}} chat sessions",
+      "settings": "App settings",
+      "backgroundImage": "Background image"
+    },
+    "stage": {
+      "settings": "Exporting settings...",
+      "providers": "Exporting model configs...",
+      "openclawConfig": "Exporting OpenClaw config...",
+      "openclawAuth": "Exporting auth info...",
+      "skills": "Exporting skills...",
+      "chatSessions": "Exporting chat sessions...",
+      "backgroundImage": "Exporting background image..."
+    }
+  },
   "about": {
     "title": "About",
-    "appName": "ClawX",
+    "appName": "clawPlus",
     "tagline": "Graphical AI Assistant",
     "basedOn": "Based on OpenClaw",
     "version": "Version {{version}}",

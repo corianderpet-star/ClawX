@@ -20,6 +20,7 @@ import { Setup } from './pages/Setup';
 import { useSettingsStore } from './stores/settings';
 import { useGatewayStore } from './stores/gateway';
 import { applyGatewayTransportPreference } from './lib/api-client';
+import { applyThemeColor } from './lib/theme-colors';
 
 
 /**
@@ -91,6 +92,7 @@ function App() {
   const location = useLocation();
   const initSettings = useSettingsStore((state) => state.init);
   const theme = useSettingsStore((state) => state.theme);
+  const themeColor = useSettingsStore((state) => state.themeColor);
   const language = useSettingsStore((state) => state.language);
   const setupComplete = useSettingsStore((state) => state.setupComplete);
   const initGateway = useGatewayStore((state) => state.init);
@@ -136,7 +138,7 @@ function App() {
     };
   }, [navigate]);
 
-  // Apply theme
+  // Apply theme class + custom color
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
@@ -149,7 +151,17 @@ function App() {
     } else {
       root.classList.add(theme);
     }
-  }, [theme]);
+
+    applyThemeColor(themeColor, theme);
+
+    // Listen for system theme changes when in 'system' mode
+    if (theme === 'system') {
+      const mql = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = () => applyThemeColor(themeColor, theme);
+      mql.addEventListener('change', handler);
+      return () => mql.removeEventListener('change', handler);
+    }
+  }, [theme, themeColor]);
 
   useEffect(() => {
     applyGatewayTransportPreference();

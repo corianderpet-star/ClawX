@@ -36,6 +36,15 @@ interface SettingsState {
   sidebarCollapsed: boolean;
   devModeUnlocked: boolean;
 
+  // Theme color
+  themeColor: string;
+
+  // Background
+  backgroundImage: string;
+  backgroundType: 'image' | 'video' | '';
+  backgroundOpacity: number;
+  backgroundBlur: number;
+
   // Setup
   setupComplete: boolean;
 
@@ -58,6 +67,11 @@ interface SettingsState {
   setAutoDownloadUpdate: (value: boolean) => void;
   setSidebarCollapsed: (value: boolean) => void;
   setDevModeUnlocked: (value: boolean) => void;
+  setThemeColor: (value: string) => void;
+  setBackgroundImage: (value: string) => void;
+  setBackgroundType: (value: 'image' | 'video' | '') => void;
+  setBackgroundOpacity: (value: number) => void;
+  setBackgroundBlur: (value: number) => void;
   markSetupComplete: () => void;
   resetSettings: () => void;
 }
@@ -85,6 +99,11 @@ const defaultSettings = {
   autoDownloadUpdate: false,
   sidebarCollapsed: false,
   devModeUnlocked: false,
+  themeColor: '',
+  backgroundImage: '',
+  backgroundType: '' as 'image' | 'video' | '',
+  backgroundOpacity: 0.3,
+  backgroundBlur: 0,
   setupComplete: false,
 };
 
@@ -142,6 +161,11 @@ export const useSettingsStore = create<SettingsState>()(
       setAutoDownloadUpdate: (autoDownloadUpdate) => set({ autoDownloadUpdate }),
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
       setDevModeUnlocked: (devModeUnlocked) => set({ devModeUnlocked }),
+      setThemeColor: (themeColor) => set({ themeColor }),
+      setBackgroundImage: (backgroundImage) => set({ backgroundImage }),
+      setBackgroundType: (backgroundType) => set({ backgroundType }),
+      setBackgroundOpacity: (backgroundOpacity) => set({ backgroundOpacity }),
+      setBackgroundBlur: (backgroundBlur) => set({ backgroundBlur }),
       markSetupComplete: () => set({ setupComplete: true }),
       resetSettings: () => set(defaultSettings),
     }),

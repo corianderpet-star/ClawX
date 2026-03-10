@@ -2,9 +2,10 @@
  * Electron Main Process Entry
  * Manages window creation, system tray, and IPC handlers
  */
-import { app, BrowserWindow, nativeImage, session, shell } from 'electron';
+import { app, BrowserWindow, nativeImage, net, protocol, session, shell } from 'electron';
 import type { Server } from 'node:http';
 import { join } from 'path';
+import { pathToFileURL } from 'node:url';
 import { GatewayManager } from '../gateway/manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { createTray } from './tray';
@@ -15,7 +16,7 @@ import { logger } from '../utils/logger';
 import { warmupNetworkOptimization } from '../utils/uv-env';
 
 import { ClawHubService } from '../gateway/clawhub';
-import { ensureClawXContext, repairClawXOnlyBootstrapFiles } from '../utils/openclaw-workspace';
+import { ensureClawPlusContext, repairClawPlusOnlyBootstrapFiles } from '../utils/openclaw-workspace';
 import { autoInstallCliIfNeeded, generateCompletionCache, installCompletionToProfile } from '../utils/openclaw-cli';
 import { isQuitting, setQuitting } from './app-state';
 import { applyProxySettings } from './proxy';
@@ -51,6 +52,12 @@ app.disableHardwareAcceleration();
 if (process.platform === 'linux') {
   app.setDesktopName('clawx.desktop');
 }
+
+// Register custom protocol scheme for serving background media (images + videos)
+// Must be called before app.whenReady().
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'clawx-bg', privileges: { standard: false, supportFetchAPI: true, stream: true, bypassCSP: true } },
+]);
 
 // Prevent multiple instances of the app from running simultaneously.
 // Without this, two instances each spawn their own gateway process on the
@@ -148,7 +155,7 @@ function createWindow(): BrowserWindow {
 async function initialize(): Promise<void> {
   // Initialize logger first
   logger.init();
-  logger.info('=== ClawX Application Starting ===');
+  logger.info('=== ClawPlus Application Starting ===');
   logger.debug(
     `Runtime: platform=${process.platform}/${process.arch}, electron=${process.versions.electron}, node=${process.versions.node}, packaged=${app.isPackaged}`
   );
@@ -191,6 +198,18 @@ async function initialize(): Promise<void> {
     },
   );
 
+  // Register custom protocol handler for background media files (images + videos)
+  protocol.handle('clawx-bg', async (_request) => {
+    // URL format: clawx-bg://background?t=<timestamp>
+    const bgPath = await getSetting('backgroundImage');
+    if (!bgPath) return new Response('Not found', { status: 404 });
+    try {
+      return net.fetch(pathToFileURL(bgPath).href);
+    } catch {
+      return new Response('Failed to read file', { status: 500 });
+    }
+  });
+
   // Register IPC handlers
   registerIpcHandlers(gatewayManager, clawHubService, mainWindow);
 
@@ -219,10 +238,10 @@ async function initialize(): Promise<void> {
     mainWindow = null;
   });
 
-  // Repair any bootstrap files that only contain ClawX markers (no OpenClaw
-  // template content). This fixes a race condition where ensureClawXContext()
+  // Repair any bootstrap files that only contain ClawPlus markers (no OpenClaw
+  // template content). This fixes a race condition where ensureClawPlusContext()
   // previously created the file before the gateway could seed the full template.
-  void repairClawXOnlyBootstrapFiles().catch((error) => {
+  void repairClawPlusOnlyBootstrapFiles().catch((error) => {
     logger.warn('Failed to repair bootstrap files:', error);
   });
 
@@ -237,8 +256,8 @@ async function initialize(): Promise<void> {
   gatewayManager.on('status', (status: { state: string }) => {
     hostEventBus.emit('gateway:status', status);
     if (status.state === 'running') {
-      void ensureClawXContext().catch((error) => {
-        logger.warn('Failed to re-merge ClawX context after gateway reconnect:', error);
+      void ensureClawPlusContext().catch((error) => {
+        logger.warn('Failed to re-merge ClawPlus context after gateway reconnect:', error);
       });
     }
   });
@@ -319,11 +338,11 @@ async function initialize(): Promise<void> {
     logger.info('Gateway auto-start disabled in settings');
   }
 
-  // Merge ClawX context snippets into the workspace bootstrap files.
+  // Merge ClawPlus context snippets into the workspace bootstrap files.
   // The gateway seeds workspace files asynchronously after its HTTP server
-  // is ready, so ensureClawXContext will retry until the target files appear.
-  void ensureClawXContext().catch((error) => {
-    logger.warn('Failed to merge ClawX context into workspace:', error);
+  // is ready, so ensureClawPlusContext will retry until the target files appear.
+  void ensureClawPlusContext().catch((error) => {
+    logger.warn('Failed to merge ClawPlus context into workspace:', error);
   });
 
   // Auto-install openclaw CLI and shell completions (non-blocking).

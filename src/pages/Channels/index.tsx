@@ -49,6 +49,7 @@ import telegramIcon from '@/assets/channels/telegram.svg';
 import discordIcon from '@/assets/channels/discord.svg';
 import whatsappIcon from '@/assets/channels/whatsapp.svg';
 import dingtalkIcon from '@/assets/channels/dingtalk.svg';
+import qqbotIcon from '@/assets/channels/qqbot.svg';
 import feishuIcon from '@/assets/channels/feishu.svg';
 
 export function Channels() {
@@ -163,7 +164,7 @@ export function Channels() {
           {channels.length > 0 && (
             <div className="mb-12">
               <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-                Available Channels
+                {t('available')}
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                 {channels.map((channel) => (
@@ -180,7 +181,7 @@ export function Channels() {
           {/* Supported Channels (Not yet configured) */}
           <div className="mb-8">
             <h2 className="text-3xl font-serif text-foreground mb-6 font-normal tracking-tight" style={{ fontFamily: 'Georgia, Cambria, "Times New Roman", Times, serif' }}>
-              Supported Channels
+              {t('supported')}
             </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
@@ -278,6 +279,8 @@ function ChannelLogo({ type }: { type: ChannelType }) {
       return <img src={whatsappIcon} alt="WhatsApp" className="w-[22px] h-[22px] dark:invert" />;
     case 'dingtalk':
       return <img src={dingtalkIcon} alt="DingTalk" className="w-[22px] h-[22px] dark:invert" />;
+    case 'qqbot':
+      return <img src={qqbotIcon} alt="QQ Bot" className="w-[22px] h-[22px] dark:invert" />;
     case 'feishu':
       return <img src={feishuIcon} alt="Feishu" className="w-[22px] h-[22px] dark:invert" />;
     default:

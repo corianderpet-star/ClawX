@@ -1,6 +1,6 @@
 {
   "title": "設定",
-  "subtitle": "ClawX の体験をカスタマイズ",
+  "subtitle": "clawPlus の体験をカスタマイズ",
   "appearance": {
     "title": "外観",
     "description": "外観とスタイルをカスタマイズ",
@@ -8,7 +8,30 @@
     "light": "ライト",
     "dark": "ダーク",
     "system": "システム",
-    "language": "言語"
+    "language": "言語",
+    "themeColor": "アクセントカラー",
+    "customColor": "カスタム",
+    "colors": {
+      "blue": "ブルー",
+      "violet": "バイオレット",
+      "rose": "ローズ",
+      "orange": "オレンジ",
+      "green": "グリーン",
+      "amber": "アンバー",
+      "teal": "ティール",
+      "slate": "スレート"
+    },
+    "background": "背景 / 動的壁紙",
+    "uploadBackground": "画像または動画をアップロード",
+    "changeBackground": "変更",
+    "removeBackground": "削除",
+    "backgroundOpacity": "背景の不透明度",
+    "backgroundBlur": "背景のぼかし",
+    "noBackgroundSet": "背景が設定されていません",
+    "backgroundSelected": "背景が更新されました",
+    "backgroundRemoved": "背景が削除されました",
+    "backgroundFailed": "背景の設定に失敗しました",
+    "videoHint": "MP4 / WebM 動画を動的背景として使用可能"
   },
   "aiProviders": {
     "title": "AI プロバイダー",
@@ -35,7 +58,7 @@
     "notRequired": "不要",
     "empty": {
       "title": "プロバイダーが構成されていません",
-      "desc": "ClawX の使用を開始するには AI プロバイダーを追加してください",
+      "desc": "clawPlus の使用を開始するには AI プロバイダーを追加してください",
       "cta": "最初のプロバイダーを追加"
     },
     "dialog": {
@@ -115,7 +138,7 @@
     "appLogs": "アプリケーションログ",
     "openFolder": "フォルダーを開く",
     "autoStart": "ゲートウェイ自動起動",
-    "autoStartDesc": "ClawX 起動時にゲートウェイを自動起動",
+    "autoStartDesc": "clawPlus 起動時にゲートウェイを自動起動",
     "proxyTitle": "プロキシ",
     "proxyDesc": "Electron と Gateway の通信をローカルプロキシ経由にします。",
     "proxyServer": "プロキシサーバー",
@@ -136,7 +159,7 @@
   },
   "updates": {
     "title": "アップデート",
-    "description": "ClawX を最新に保つ",
+    "description": "clawPlus を最新に保つ",
     "autoCheck": "自動更新チェック",
     "autoCheckDesc": "起動時に更新を確認",
     "autoDownload": "自動アップデート",
@@ -225,9 +248,51 @@
     "installMessage": "\"openclaw\" コマンドをインストールしますか？",
     "installDetail": "~/.local/bin/openclaw が作成されます。グローバルに実行するには ~/.local/bin が PATH に含まれていることを確認してください。"
   },
+  "migration": {
+    "title": "データ移行",
+    "description": "ワンクリックでデータのエクスポート・インポートを行い、PC の引っ越しを簡単に",
+    "export": {
+      "title": "バックアップのエクスポート",
+      "description": "設定、モデル設定、チャット履歴、スキルなどをバックアップファイルにまとめます",
+      "button": "データをエクスポート",
+      "exporting": "エクスポート中...",
+      "success": "バックアップをエクスポートしました",
+      "successDetail": "バックアップファイルを保存しました ({{size}} MB)",
+      "error": "エクスポートに失敗しました"
+    },
+    "import": {
+      "title": "バックアップのインポート",
+      "description": "バックアップファイルからデータを復元します（インポート後の再起動を推奨）",
+      "button": "データをインポート",
+      "importing": "インポート中...",
+      "success": "データを復元しました",
+      "successDetail": "{{count}} 項目を復元しました。反映するには再起動が必要です",
+      "error": "インポートに失敗しました",
+      "invalidFile": "無効なバックアップファイル",
+      "restart": "今すぐ再起動",
+      "restartLater": "後で再起動"
+    },
+    "summary": {
+      "providers": "{{count}} 個のモデル設定",
+      "channels": "{{count}} 個のチャンネル設定",
+      "skills": "{{count}} 個のスキル",
+      "chatSessions": "{{count}} 件のチャット履歴",
+      "settings": "アプリ設定",
+      "backgroundImage": "背景画像"
+    },
+    "stage": {
+      "settings": "設定をエクスポート中...",
+      "providers": "モデル設定をエクスポート中...",
+      "openclawConfig": "OpenClaw 設定をエクスポート中...",
+      "openclawAuth": "認証情報をエクスポート中...",
+      "skills": "スキルをエクスポート中...",
+      "chatSessions": "チャット履歴をエクスポート中...",
+      "backgroundImage": "背景画像をエクスポート中..."
+    }
+  },
   "about": {
     "title": "バージョン情報",
-    "appName": "ClawX",
+    "appName": "clawPlus",
     "tagline": "グラフィカル AI アシスタント",
     "basedOn": "OpenClaw ベース",
     "version": "バージョン {{version}}",

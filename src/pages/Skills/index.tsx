@@ -17,6 +17,7 @@ import {
   FolderOpen,
   FileCode,
   Globe,
+  Store,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -486,10 +487,19 @@ export function Skills() {
 
   // Auto-reset when query is cleared
   useEffect(() => {
-    if (activeTab === 'marketplace' && marketplaceQuery === '' && marketplaceDiscoveryAttemptedRef.current) {
+    if (activeTab === 'store' && marketplaceQuery === '' && marketplaceDiscoveryAttemptedRef.current) {
       searchSkills('');
     }
   }, [marketplaceQuery, activeTab, searchSkills]);
+
+  // Debounced search for store tab
+  useEffect(() => {
+    if (activeTab !== 'store' || !marketplaceQuery.trim()) return;
+    const timer = setTimeout(() => {
+      searchSkills(marketplaceQuery.trim());
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [activeTab, marketplaceQuery, searchSkills]);
 
   // Handle install
   const handleInstall = useCallback(async (slug: string) => {
@@ -501,7 +511,8 @@ export function Skills() {
       toast.success(t('toast.installed'));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      if (['installTimeoutError', 'installRateLimitError'].includes(errorMessage)) {
+      const knownInstallKeys = ['installTimeoutError', 'installRateLimitError', 'installNetworkError', 'installGenericError'];
+      if (knownInstallKeys.includes(errorMessage)) {
         toast.error(t(`toast.${errorMessage}`, { path: skillsDirPath }), { duration: 10000 });
       } else {
         toast.error(t('toast.failedInstall') + ': ' + errorMessage);
@@ -511,7 +522,7 @@ export function Skills() {
 
   // Initial marketplace load (Discovery)
   useEffect(() => {
-    if (activeTab !== 'marketplace') {
+    if (activeTab !== 'store') {
       return;
     }
     if (marketplaceQuery.trim()) {
@@ -567,7 +578,7 @@ export function Skills() {
                 className="hover:bg-black/5 dark:hover:bg-white/5 transition-colors shrink-0 text-[13px] font-medium px-4 h-8 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center text-foreground/80 hover:text-foreground"
               >
                 <FolderOpen className="h-4 w-4 mr-2" />
-                Open Skills Folder
+                {t('openFolder')}
               </button>
             )}
           </div>
@@ -590,14 +601,14 @@ export function Skills() {
               <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
               <input
                 placeholder={t('search')}
-                value={activeTab === 'marketplace' ? marketplaceQuery : searchQuery}
-                onChange={(e) => activeTab === 'marketplace' ? setMarketplaceQuery(e.target.value) : setSearchQuery(e.target.value)}
+                value={activeTab === 'store' ? marketplaceQuery : searchQuery}
+                onChange={(e) => activeTab === 'store' ? setMarketplaceQuery(e.target.value) : setSearchQuery(e.target.value)}
                 className="ml-2 bg-transparent outline-none w-24 focus:w-40 md:focus:w-56 transition-all font-normal placeholder:text-foreground/50 text-[13px] text-foreground"
               />
-              {((activeTab === 'marketplace' && marketplaceQuery) || (activeTab === 'all' && searchQuery)) && (
+              {((activeTab === 'store' && marketplaceQuery) || (activeTab === 'all' && searchQuery)) && (
                 <button
                   type="button"
-                  onClick={() => activeTab === 'marketplace' ? setMarketplaceQuery('') : setSearchQuery('')}
+                  onClick={() => activeTab === 'store' ? setMarketplaceQuery('') : setSearchQuery('')}
                   className="text-foreground/50 hover:text-foreground shrink-0 ml-1"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -610,28 +621,34 @@ export function Skills() {
                 onClick={() => { setActiveTab('all'); setSelectedSource('all'); }}
                 className={cn("font-medium transition-colors flex items-center gap-1.5", activeTab === 'all' && selectedSource === 'all' ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
               >
-                All Skills
+                {t('filter.allLabel')}
                 <span className="text-[12px] font-normal opacity-70">{sourceStats.all}</span>
               </button>
               <button
                 onClick={() => { setActiveTab('all'); setSelectedSource('built-in'); }}
                 className={cn("font-medium transition-colors flex items-center gap-1.5", activeTab === 'all' && selectedSource === 'built-in' ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
               >
-                Built-in
+                {t('filter.builtInLabel')}
                 <span className="text-[12px] font-normal opacity-70">{sourceStats.builtIn}</span>
               </button>
               <button
-                onClick={() => setActiveTab('marketplace')}
-                className={cn("font-medium transition-colors flex items-center gap-1.5", activeTab === 'marketplace' ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+                onClick={() => { setActiveTab('all'); setSelectedSource('marketplace'); }}
+                className={cn("font-medium transition-colors flex items-center gap-1.5", activeTab === 'all' && selectedSource === 'marketplace' ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
               >
-                Marketplace
+                {t('filter.marketplaceLabel')}
                 <span className="text-[12px] font-normal opacity-70">{sourceStats.marketplace}</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('store')}
+                className={cn("font-medium transition-colors flex items-center gap-1.5", activeTab === 'store' ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+              >
+                {t('filter.storeLabel')}
               </button>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {activeTab === 'all' && (
+            {activeTab === 'all' && selectedSource !== 'marketplace' && (
               <>
                 <Button
                   variant="outline"
@@ -639,7 +656,7 @@ export function Skills() {
                   onClick={() => bulkToggleVisible(true)}
                   className="h-8 text-[13px] font-medium rounded-md px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none"
                 >
-                  Enable All
+                  {t('actions.enableAll')}
                 </Button>
                 <Button
                   variant="outline"
@@ -647,7 +664,7 @@ export function Skills() {
                   onClick={() => bulkToggleVisible(false)}
                   className="h-8 text-[13px] font-medium rounded-md px-3 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none"
                 >
-                  Disable All
+                  {t('actions.disableAll')}
                 </Button>
               </>
             )}
@@ -670,7 +687,7 @@ export function Skills() {
             <div className="mb-4 p-4 rounded-xl border border-destructive/50 bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
               <AlertCircle className="h-5 w-5 shrink-0" />
               <span>
-                {['fetchTimeoutError', 'fetchRateLimitError', 'timeoutError', 'rateLimitError'].includes(error)
+                {['fetchTimeoutError', 'fetchRateLimitError', 'fetchNetworkError', 'fetchGenericError'].includes(error)
                   ? t(`toast.${error}`, { path: skillsDirPath })
                   : error}
               </span>
@@ -682,7 +699,23 @@ export function Skills() {
             filteredSkills.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Puzzle className="h-10 w-10 mb-4 opacity-50" />
-                <p>{searchQuery ? t('noSkillsSearch') : t('noSkillsAvailable')}</p>
+                <p className="text-center whitespace-pre-line">
+                  {searchQuery 
+                    ? t('noSkillsSearch') 
+                    : selectedSource === 'marketplace' 
+                      ? t('marketplace.noInstalled')
+                      : t('noSkillsAvailable')}
+                </p>
+                {selectedSource === 'marketplace' && !searchQuery && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 h-8 text-[13px] font-medium rounded-full px-4 border-black/10 dark:border-white/10 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 shadow-none"
+                    onClick={() => setActiveTab('store')}
+                  >
+                    {t('filter.storeLabel')}
+                  </Button>
+                )}
               </div>
             ) : (
               filteredSkills.map((skill) => (
@@ -726,20 +759,27 @@ export function Skills() {
             )
           )}
 
-          {activeTab === 'marketplace' && (
+          {activeTab === 'store' && (
              <div className="flex flex-col gap-1 mt-2">
                 {searchError && (
                   <div className="mb-4 p-4 rounded-xl border border-destructive/50 bg-destructive/10 text-destructive text-sm font-medium flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 shrink-0" />
                     <span>
-                      {['searchTimeoutError', 'searchRateLimitError', 'timeoutError', 'rateLimitError'].includes(searchError.replace('Error: ', ''))
+                      {['searchTimeoutError', 'searchRateLimitError', 'searchNetworkError', 'searchGenericError'].includes(searchError.replace('Error: ', ''))
                         ? t(`toast.${searchError.replace('Error: ', '')}`, { path: skillsDirPath })
                         : t('marketplace.searchError')}
                     </span>
                   </div>
                 )}
                 
-                {activeTab === 'marketplace' && marketplaceQuery && searching && (
+                {activeTab === 'store' && marketplaceQuery && searching && (
+                  <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                    <LoadingSpinner size="lg" />
+                    <p className="mt-4 text-sm">{t('marketplace.searching')}</p>
+                  </div>
+                )}
+
+                {activeTab === 'store' && !marketplaceQuery && searching && (
                   <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                     <LoadingSpinner size="lg" />
                     <p className="mt-4 text-sm">{t('marketplace.searching')}</p>
@@ -805,10 +845,10 @@ export function Skills() {
                     );
                   })
                 ) : (
-                  !searching && marketplaceQuery && (
+                  !searching && (
                     <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                      <Package className="h-10 w-10 mb-4 opacity-50" />
-                      <p>{t('marketplace.noResults')}</p>
+                      <Store className="h-10 w-10 mb-4 opacity-50" />
+                      <p>{marketplaceQuery ? t('marketplace.noResults') : t('marketplace.emptyPrompt')}</p>
                     </div>
                   )
                 )}

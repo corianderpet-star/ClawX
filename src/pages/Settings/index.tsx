@@ -15,12 +15,21 @@ import {
   ChevronDown,
   ChevronRight,
   FileText,
+  Image,
+  Trash2,
+  Palette,
+  Upload,
+  HardDriveDownload,
+  PackageCheck,
+  Loader2,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -44,17 +53,208 @@ import {
 import { useTranslation } from 'react-i18next';
 import { SUPPORTED_LANGUAGES } from '@/i18n';
 import { hostApiFetch } from '@/lib/host-api';
+import { THEME_COLOR_PRESETS } from '@/lib/theme-colors';
 type ControlUiInfo = {
   url: string;
   token: string;
   port: number;
 };
 
+// ── Migration Section Component ──────────────────────────────────
+
+interface BackupSummary {
+  settingsSize: number;
+  providersCount: number;
+  channelsCount: number;
+  skillsCount: number;
+  chatSessionsCount: number;
+  hasBackgroundImage: boolean;
+}
+
+function MigrationSection() {
+  const { t } = useTranslation('settings');
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exportStage, setExportStage] = useState('');
+  const [summary, setSummary] = useState<BackupSummary | null>(null);
+
+  // Load backup summary on mount
+  useEffect(() => {
+    invokeIpc<BackupSummary>('migration:summary')
+      .then(setSummary)
+      .catch(() => { /* ignore */ });
+  }, []);
+
+  // Listen for progress events
+  useEffect(() => {
+    const handler = (...args: unknown[]) => {
+      const progress = args[0] as { stage: string } | undefined;
+      if (progress?.stage) {
+        setExportStage(progress.stage);
+      }
+    };
+    window.electron?.ipcRenderer?.on?.('migration:progress', handler);
+    return () => {
+      window.electron?.ipcRenderer?.off?.('migration:progress', handler);
+    };
+  }, []);
+
+  const handleExport = async () => {
+    setExporting(true);
+    setExportStage('');
+    try {
+      const result = await invokeIpc<{
+        success: boolean;
+        canceled?: boolean;
+        filePath?: string;
+        sizeMB?: number;
+        error?: string;
+      }>('migration:export');
+
+      if (result.canceled) {
+        return;
+      }
+      if (result.success) {
+        toast.success(t('migration.export.success'), {
+          description: t('migration.export.successDetail', { size: result.sizeMB?.toFixed(1) || '0' }),
+        });
+      } else {
+        toast.error(t('migration.export.error'), { description: result.error });
+      }
+    } catch (err) {
+      toast.error(t('migration.export.error'), { description: String(err) });
+    } finally {
+      setExporting(false);
+      setExportStage('');
+    }
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    try {
+      const result = await invokeIpc<{
+        success: boolean;
+        canceled?: boolean;
+        restored?: string[];
+        errors?: Array<{ category: string; error: string }>;
+        error?: string;
+      }>('migration:import');
+
+      if (result.canceled) {
+        return;
+      }
+      if (result.success || (result.restored && result.restored.length > 0)) {
+        toast.success(t('migration.import.success'), {
+          description: t('migration.import.successDetail', { count: result.restored?.length || 0 }),
+          action: {
+            label: t('migration.import.restart'),
+            onClick: () => invokeIpc('app:relaunch'),
+          },
+        });
+      } else {
+        const errorMsg = result.error || result.errors?.map(e => `${e.category}: ${e.error}`).join('; ');
+        toast.error(t('migration.import.error'), { description: errorMsg });
+      }
+    } catch (err) {
+      toast.error(t('migration.import.error'), { description: String(err) });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Summary stats */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+          {summary.providersCount > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <PackageCheck className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.providers', { count: summary.providersCount })}</span>
+            </div>
+          )}
+          {summary.channelsCount > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <PackageCheck className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.channels', { count: summary.channelsCount })}</span>
+            </div>
+          )}
+          {summary.skillsCount > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <PackageCheck className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.skills', { count: summary.skillsCount })}</span>
+            </div>
+          )}
+          {summary.chatSessionsCount > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <PackageCheck className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.chatSessions', { count: summary.chatSessionsCount })}</span>
+            </div>
+          )}
+          {summary.settingsSize > 0 && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <PackageCheck className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.settings')}</span>
+            </div>
+          )}
+          {summary.hasBackgroundImage && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <PackageCheck className="h-4 w-4 shrink-0" />
+              <span>{t('migration.summary.backgroundImage')}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Progress indicator */}
+      {exportStage && (
+        <div className="text-sm text-muted-foreground flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>{t(`migration.stage.${exportStage}`, exportStage)}</span>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button
+          variant="outline"
+          className="flex-1 gap-2"
+          onClick={handleExport}
+          disabled={exporting || importing}
+        >
+          {exporting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <HardDriveDownload className="h-4 w-4" />
+          )}
+          {exporting ? t('migration.export.exporting') : t('migration.export.button')}
+        </Button>
+
+        <Button
+          variant="outline"
+          className="flex-1 gap-2"
+          onClick={handleImport}
+          disabled={exporting || importing}
+        >
+          {importing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          {importing ? t('migration.import.importing') : t('migration.import.button')}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function Settings() {
   const { t } = useTranslation('settings');
   const {
     theme,
     setTheme,
+    themeColor,
+    setThemeColor,
     language,
     setLanguage,
     gatewayAutoStart,
@@ -77,6 +277,14 @@ export function Settings() {
     setAutoDownloadUpdate,
     devModeUnlocked,
     setDevModeUnlocked,
+    backgroundImage,
+    backgroundType,
+    backgroundOpacity,
+    backgroundBlur,
+    setBackgroundImage,
+    setBackgroundType,
+    setBackgroundOpacity,
+    setBackgroundBlur,
   } = useSettingsStore();
 
   const { status: gatewayStatus, restart: restartGateway } = useGatewayStore();
@@ -101,6 +309,78 @@ export function Settings() {
   const showCliTools = true;
   const [showLogs, setShowLogs] = useState(false);
   const [logContent, setLogContent] = useState('');
+  const [bgPreviewUrl, setBgPreviewUrl] = useState('');
+  const [bgIsVideo, setBgIsVideo] = useState(false);
+  const [customColorDraft, setCustomColorDraft] = useState(
+    themeColor.startsWith('#') ? themeColor : ''
+  );
+  const isCustomColor = themeColor.startsWith('#');
+
+  // Load background preview on mount / when backgroundImage changes
+  useEffect(() => {
+    if (!backgroundImage) {
+      setBgPreviewUrl('');
+      setBgIsVideo(false);
+      return;
+    }
+    invokeIpc<{ success: boolean; dataUrl?: string; isVideo?: boolean; mimeType?: string }>('settings:getBackgroundImageDataUrl')
+      .then((res) => {
+        if (res?.success) {
+          const isVideo = res.isVideo ?? false;
+          setBgIsVideo(isVideo);
+          if (isVideo) {
+            setBgPreviewUrl(`clawx-bg://background?t=${Date.now()}`);
+          } else if (res.dataUrl) {
+            setBgPreviewUrl(res.dataUrl);
+          } else {
+            setBgPreviewUrl('');
+          }
+        } else {
+          setBgPreviewUrl('');
+          setBgIsVideo(false);
+        }
+      })
+      .catch(() => { setBgPreviewUrl(''); setBgIsVideo(false); });
+  }, [backgroundImage, backgroundType]);
+
+  const handleSelectBackground = async () => {
+    try {
+      const res = await invokeIpc<{ success: boolean; canceled?: boolean; path?: string; dataUrl?: string; isVideo?: boolean; mimeType?: string; error?: string }>(
+        'settings:selectBackgroundImage'
+      );
+      if (res?.success && res.path) {
+        const isVideo = res.isVideo ?? false;
+        setBackgroundImage(res.path);
+        setBackgroundType(isVideo ? 'video' : 'image');
+        setBgIsVideo(isVideo);
+        if (isVideo) {
+          setBgPreviewUrl(`clawx-bg://background?t=${Date.now()}`);
+        } else if (res.dataUrl) {
+          setBgPreviewUrl(res.dataUrl);
+        }
+        toast.success(t('appearance.backgroundSelected'));
+      } else if (res && !res.canceled) {
+        toast.error(t('appearance.backgroundFailed'));
+      }
+    } catch {
+      toast.error(t('appearance.backgroundFailed'));
+    }
+  };
+
+  const handleRemoveBackground = async () => {
+    try {
+      await invokeIpc('settings:removeBackgroundImage');
+      setBackgroundImage('');
+      setBackgroundType('');
+      setBgPreviewUrl('');
+      setBgIsVideo(false);
+      setBackgroundOpacity(0.3);
+      setBackgroundBlur(0);
+      toast.success(t('appearance.backgroundRemoved'));
+    } catch {
+      toast.error(t('appearance.backgroundFailed'));
+    }
+  };
 
   const handleShowLogs = async () => {
     try {
@@ -435,6 +715,54 @@ export function Settings() {
             </div>
           </div>
           <div className="space-y-2">
+            <Label>{t('appearance.themeColor')}</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              {THEME_COLOR_PRESETS.map((preset) => (
+                <button
+                  key={preset.id || '__default'}
+                  type="button"
+                  title={t(`appearance.colors.${preset.labelKey}`)}
+                  className={`h-7 w-7 rounded-full border-2 transition-all hover:scale-110 ${
+                    themeColor === preset.id
+                      ? 'border-foreground scale-110 ring-2 ring-foreground/20'
+                      : 'border-transparent'
+                  }`}
+                  style={{ backgroundColor: preset.swatch }}
+                  onClick={() => setThemeColor(preset.id)}
+                />
+              ))}
+              {/* Custom color input */}
+              <div className="flex items-center gap-1.5 ml-1">
+                <label
+                  className={`relative h-7 w-7 rounded-full border-2 transition-all hover:scale-110 cursor-pointer overflow-hidden ${
+                    isCustomColor
+                      ? 'border-foreground scale-110 ring-2 ring-foreground/20'
+                      : 'border-muted-foreground/40'
+                  }`}
+                  title={t('appearance.customColor')}
+                >
+                  {isCustomColor ? (
+                    <span
+                      className="absolute inset-0 rounded-full"
+                      style={{ backgroundColor: themeColor }}
+                    />
+                  ) : (
+                    <Palette className="absolute inset-0 m-auto h-4 w-4 text-muted-foreground" />
+                  )}
+                  <input
+                    type="color"
+                    className="sr-only"
+                    value={customColorDraft || '#3b82f6'}
+                    onChange={(e) => {
+                      setCustomColorDraft(e.target.value);
+                      setThemeColor(e.target.value);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-2">
             <Label>{t('appearance.language')}</Label>
             <div className="flex gap-2">
               {SUPPORTED_LANGUAGES.map((lang) => (
@@ -448,6 +776,92 @@ export function Settings() {
                 </Button>
               ))}
             </div>
+          </div>
+          <Separator />
+          <div className="space-y-4">
+            <Label>{t('appearance.background')}</Label>
+            <div className="flex items-start gap-4">
+              {/* Preview thumbnail */}
+              <div
+                className="relative h-24 w-40 shrink-0 overflow-hidden rounded-md border bg-muted flex items-center justify-center cursor-pointer"
+                onClick={handleSelectBackground}
+                title={t('appearance.uploadBackground')}
+              >
+                {bgPreviewUrl && bgIsVideo ? (
+                  <video
+                    src={bgPreviewUrl}
+                    muted
+                    autoPlay
+                    loop
+                    playsInline
+                    className="h-full w-full object-cover"
+                  />
+                ) : bgPreviewUrl ? (
+                  <img
+                    src={bgPreviewUrl}
+                    alt="background preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                    <Image className="h-6 w-6" />
+                    <span className="text-xs">{t('appearance.noBackgroundSet')}</span>
+                  </div>
+                )}
+                {bgIsVideo && bgPreviewUrl && (
+                  <div className="absolute top-1 right-1 rounded bg-black/60 px-1.5 py-0.5">
+                    <Video className="h-3 w-3 text-white" />
+                  </div>
+                )}
+              </div>
+              {/* Actions */}
+              <div className="flex flex-col gap-2">
+                <Button variant="outline" size="sm" onClick={handleSelectBackground}>
+                  <Image className="h-4 w-4 mr-2" />
+                  {backgroundImage ? t('appearance.changeBackground') : t('appearance.uploadBackground')}
+                </Button>
+                {backgroundImage && (
+                  <Button variant="outline" size="sm" onClick={handleRemoveBackground} className="text-destructive hover:text-destructive">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    {t('appearance.removeBackground')}
+                  </Button>
+                )}
+                {bgIsVideo && (
+                  <p className="text-xs text-muted-foreground">{t('appearance.videoHint')}</p>
+                )}
+              </div>
+            </div>
+            {/* Sliders only visible when a background is set */}
+            {backgroundImage && (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">{t('appearance.backgroundOpacity')}</Label>
+                    <span className="text-xs text-muted-foreground">{Math.round(backgroundOpacity * 100)}%</span>
+                  </div>
+                  <Slider
+                    min={0.05}
+                    max={1}
+                    step={0.05}
+                    value={[backgroundOpacity]}
+                    onValueChange={([v]) => setBackgroundOpacity(v)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm">{t('appearance.backgroundBlur')}</Label>
+                    <span className="text-xs text-muted-foreground">{backgroundBlur}px</span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={30}
+                    step={1}
+                    value={[backgroundBlur]}
+                    onValueChange={([v]) => setBackgroundBlur(v)}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -909,6 +1323,17 @@ export function Settings() {
         </Card>
       )}
 
+      {/* Data Migration */}
+      <Card className="order-2">
+        <CardHeader>
+          <CardTitle>{t('migration.title')}</CardTitle>
+          <CardDescription>{t('migration.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MigrationSection />
+        </CardContent>
+      </Card>
+
       {/* About */}
       <Card className="order-2">
         <CardHeader>
@@ -921,20 +1346,20 @@ export function Settings() {
           <p>{t('about.basedOn')}</p>
           <p>{t('about.version', { version: currentVersion })}</p>
           <div className="flex gap-4 pt-2">
-            <Button
+            {/* <Button
               variant="link"
               className="h-auto p-0"
               onClick={() => window.electron.openExternal('https://claw-x.com')}
             >
               {t('about.docs')}
-            </Button>
-            <Button
+            </Button> */}
+            {/* <Button
               variant="link"
               className="h-auto p-0"
-              onClick={() => window.electron.openExternal('https://github.com/ValueCell-ai/ClawX')}
+              onClick={() => window.electron.openExternal('https://github.com/ValueCell-ai/ClawPlus')}
             >
               {t('about.github')}
-            </Button>
+            </Button> */}
           </div>
         </CardContent>
       </Card>

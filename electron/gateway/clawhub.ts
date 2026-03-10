@@ -40,6 +40,25 @@ export class ClawHubService {
     private useNodeRunner: boolean;
     private ansiRegex: RegExp;
 
+    /* ── Rate-limit / throttle infrastructure ── */
+
+    /** Minimum interval (ms) between consecutive ClawHub CLI invocations. */
+    private static readonly MIN_CMD_INTERVAL_MS = 3_000;
+
+    /** Serialisation queue – ensures only one CLI process at a time. */
+    private cmdQueue: Promise<string> = Promise.resolve('');
+    /** Timestamp of the last CLI invocation start. */
+    private lastCmdStartedAt = 0;
+
+    /* ── Result caches ── */
+    private listCache: { ts: number; data: Array<{ slug: string; version: string }> } | null = null;
+    private exploreCache: { ts: number; data: ClawHubSkillResult[] } | null = null;
+    private searchCache = new Map<string, { ts: number; data: ClawHubSkillResult[] }>();
+
+    private static readonly LIST_CACHE_TTL_MS = 30_000;       // 30 s
+    private static readonly EXPLORE_CACHE_TTL_MS = 120_000;   // 2 min
+    private static readonly SEARCH_CACHE_TTL_MS = 60_000;     // 1 min
+
     constructor() {
         // Use the user's OpenClaw config directory (~/.openclaw) for skill management
         // This avoids installing skills into the project's openclaw submodule
@@ -68,9 +87,32 @@ export class ClawHubService {
     }
 
     /**
-     * Run a ClawHub CLI command
+     * Run a ClawHub CLI command (serialised & throttled).
+     *
+     * Commands are queued so only one runs at a time, and there is a guaranteed
+     * minimum gap (`MIN_CMD_INTERVAL_MS`) between consecutive invocations to
+     * avoid triggering ClawHub's server-side rate limiter.
      */
-    private async runCommand(args: string[]): Promise<string> {
+    private runCommand(args: string[]): Promise<string> {
+        const next = this.cmdQueue.catch(() => {/* swallow predecessor errors */ }).then(async () => {
+            // Enforce minimum interval
+            const elapsed = Date.now() - this.lastCmdStartedAt;
+            const wait = ClawHubService.MIN_CMD_INTERVAL_MS - elapsed;
+            if (wait > 0) {
+                console.log(`ClawHub throttle: waiting ${wait}ms before next command`);
+                await new Promise<void>((r) => setTimeout(r, wait));
+            }
+            this.lastCmdStartedAt = Date.now();
+            return this.runCommandRaw(args);
+        });
+        this.cmdQueue = next.catch(() => '');   // keep queue alive on error
+        return next;
+    }
+
+    /**
+     * Raw CLI execution (no throttling / queuing).
+     */
+    private runCommandRaw(args: string[]): Promise<string> {
         return new Promise((resolve, reject) => {
             if (this.useNodeRunner && !fs.existsSync(this.cliEntryPath)) {
                 reject(new Error(`ClawHub CLI entry not found at: ${this.cliEntryPath}`));
@@ -147,6 +189,14 @@ export class ClawHubService {
                 return this.explore({ limit: params.limit });
             }
 
+            // Check search cache
+            const cacheKey = `${params.query}|${params.limit ?? ''}`;
+            const cached = this.searchCache.get(cacheKey);
+            if (cached && Date.now() - cached.ts < ClawHubService.SEARCH_CACHE_TTL_MS) {
+                console.log(`ClawHub search cache hit for "${params.query}"`);
+                return cached.data;
+            }
+
             const args = ['search', params.query];
             if (params.limit) {
                 args.push('--limit', String(params.limit));
@@ -158,7 +208,7 @@ export class ClawHubService {
             }
 
             const lines = output.split('\n').filter(l => l.trim());
-            return lines.map(line => {
+            const results = lines.map(line => {
                 const cleanLine = this.stripAnsi(line);
 
                 // Format could be: slug vversion description (score)
@@ -199,6 +249,10 @@ export class ClawHubService {
                 }
                 return null;
             }).filter((s): s is ClawHubSkillResult => s !== null);
+
+            // Store in cache
+            this.searchCache.set(cacheKey, { ts: Date.now(), data: results });
+            return results;
         } catch (error) {
             console.error('ClawHub search error:', error);
             throw error;
@@ -210,6 +264,12 @@ export class ClawHubService {
      */
     async explore(params: { limit?: number } = {}): Promise<ClawHubSkillResult[]> {
         try {
+            // Check explore cache
+            if (this.exploreCache && Date.now() - this.exploreCache.ts < ClawHubService.EXPLORE_CACHE_TTL_MS) {
+                console.log('ClawHub explore cache hit');
+                return this.exploreCache.data;
+            }
+
             const args = ['explore'];
             if (params.limit) {
                 args.push('--limit', String(params.limit));
@@ -219,7 +279,7 @@ export class ClawHubService {
             if (!output) return [];
 
             const lines = output.split('\n').filter(l => l.trim());
-            return lines.map(line => {
+            const results = lines.map(line => {
                 const cleanLine = this.stripAnsi(line);
 
                 // Format: slug vversion time description
@@ -235,6 +295,9 @@ export class ClawHubService {
                 }
                 return null;
             }).filter((s): s is ClawHubSkillResult => s !== null);
+
+            this.exploreCache = { ts: Date.now(), data: results };
+            return results;
         } catch (error) {
             console.error('ClawHub explore error:', error);
             throw error;
@@ -256,6 +319,9 @@ export class ClawHubService {
         }
 
         await this.runCommand(args);
+
+        // Invalidate caches so the next list/explore picks up the change
+        this.listCache = null;
     }
 
     /**
@@ -263,6 +329,9 @@ export class ClawHubService {
      */
     async uninstall(params: ClawHubUninstallParams): Promise<void> {
         const fsPromises = fs.promises;
+
+        // Invalidate list cache
+        this.listCache = null;
 
         // 1. Delete the skill directory
         const skillDir = path.join(this.workDir, 'skills', params.slug);
@@ -292,13 +361,21 @@ export class ClawHubService {
      */
     async listInstalled(): Promise<Array<{ slug: string; version: string }>> {
         try {
+            // Check list cache
+            if (this.listCache && Date.now() - this.listCache.ts < ClawHubService.LIST_CACHE_TTL_MS) {
+                console.log('ClawHub list cache hit');
+                return this.listCache.data;
+            }
+
             const output = await this.runCommand(['list']);
             if (!output || output.includes('No installed skills')) {
-                return [];
+                const empty: Array<{ slug: string; version: string }> = [];
+                this.listCache = { ts: Date.now(), data: empty };
+                return empty;
             }
 
             const lines = output.split('\n').filter(l => l.trim());
-            return lines.map(line => {
+            const results = lines.map(line => {
                 const cleanLine = this.stripAnsi(line);
                 const match = cleanLine.match(/^(\S+)\s+v?(\d+\.\S+)/);
                 if (match) {
@@ -309,6 +386,9 @@ export class ClawHubService {
                 }
                 return null;
             }).filter((s): s is { slug: string; version: string } => s !== null);
+
+            this.listCache = { ts: Date.now(), data: results };
+            return results;
         } catch (error) {
             console.error('ClawHub list error:', error);
             return [];

@@ -47,6 +47,12 @@ export interface AppSettings {
   sidebarCollapsed: boolean;
   devModeUnlocked: boolean;
   
+  // Background
+  backgroundImage: string;
+  backgroundType: string;
+  backgroundOpacity: number;
+  backgroundBlur: number;
+  
   // Presets
   selectedBundles: string[];
   enabledSkills: string[];
@@ -83,6 +89,12 @@ const defaults: AppSettings = {
   // UI State
   sidebarCollapsed: false,
   devModeUnlocked: false,
+  
+  // Background
+  backgroundImage: '',
+  backgroundType: '',
+  backgroundOpacity: 0.3,
+  backgroundBlur: 0,
   
   // Presets
   selectedBundles: ['productivity', 'developer'],

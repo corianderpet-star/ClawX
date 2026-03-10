@@ -51,7 +51,7 @@ const STEP = {
 const steps: SetupStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to ClawX',
+    title: 'Welcome to clawPlus',
     description: 'Your AI assistant is ready to be configured',
   },
   {
@@ -72,7 +72,7 @@ const steps: SetupStep[] = [
   {
     id: 'complete',
     title: 'All Set!',
-    description: 'ClawX is ready to use',
+    description: 'clawPlus is ready to use',
   },
 ];
 
@@ -314,7 +314,7 @@ function WelcomeContent() {
   return (
     <div className="text-center space-y-4">
       <div className="mb-4 flex justify-center">
-        <img src={clawxIcon} alt="ClawX" className="h-16 w-16" />
+        <img src={clawxIcon} alt="clawPlus" className="h-16 w-16" />
       </div>
       <h2 className="text-xl font-semibold">{t('welcome.title')}</h2>
       <p className="text-muted-foreground">

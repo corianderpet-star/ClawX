@@ -9,6 +9,7 @@
 export type ChannelType =
   | 'whatsapp'
   | 'dingtalk'
+  | 'qqbot'
   | 'telegram'
   | 'discord'
   | 'signal'
@@ -80,6 +81,7 @@ export interface ChannelMeta {
 export const CHANNEL_ICONS: Record<ChannelType, string> = {
   whatsapp: '📱',
   dingtalk: '💬',
+  qqbot: '🐧',
   telegram: '✈️',
   discord: '🎮',
   signal: '🔒',
@@ -98,6 +100,7 @@ export const CHANNEL_ICONS: Record<ChannelType, string> = {
 export const CHANNEL_NAMES: Record<ChannelType, string> = {
   whatsapp: 'WhatsApp',
   dingtalk: 'DingTalk',
+  qqbot: 'QQ Bot',
   telegram: 'Telegram',
   discord: 'Discord',
   signal: 'Signal',
@@ -163,6 +166,37 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.dingtalk.instructions.1',
       'channels:meta.dingtalk.instructions.2',
       'channels:meta.dingtalk.instructions.3',
+    ],
+    isPlugin: true,
+  },
+  qqbot: {
+    id: 'qqbot',
+    name: 'QQ Bot',
+    icon: '🐧',
+    description: 'channels:meta.qqbot.description',
+    connectionType: 'token',
+    docsUrl: 'channels:meta.qqbot.docsUrl',
+    configFields: [
+      {
+        key: 'appId',
+        label: 'channels:meta.qqbot.fields.appId.label',
+        type: 'text',
+        placeholder: 'channels:meta.qqbot.fields.appId.placeholder',
+        required: true,
+      },
+      {
+        key: 'clientSecret',
+        label: 'channels:meta.qqbot.fields.clientSecret.label',
+        type: 'password',
+        placeholder: 'channels:meta.qqbot.fields.clientSecret.placeholder',
+        required: true,
+      },
+    ],
+    instructions: [
+      'channels:meta.qqbot.instructions.0',
+      'channels:meta.qqbot.instructions.1',
+      'channels:meta.qqbot.instructions.2',
+      'channels:meta.qqbot.instructions.3',
     ],
     isPlugin: true,
   },
@@ -496,7 +530,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
  * Get primary supported channels (non-plugin, commonly used)
  */
 export function getPrimaryChannels(): ChannelType[] {
-  return ['telegram', 'discord', 'whatsapp', 'dingtalk', 'feishu'];
+  return ['telegram', 'discord', 'whatsapp', 'dingtalk', 'qqbot', 'feishu'];
 }
 
 /**
