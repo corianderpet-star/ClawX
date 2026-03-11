@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCronStore } from '@/stores/cron';
 import { useGatewayStore } from '@/stores/gateway';
+import { useAgentsStore } from '@/stores/agents';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { formatRelativeTime, cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -180,9 +181,12 @@ interface TaskDialogProps {
 function TaskDialog({ job, onClose, onSave }: TaskDialogProps) {
   const { t } = useTranslation('cron');
   const [saving, setSaving] = useState(false);
+  const agents = useAgentsStore((s) => s.agents);
+  const isMultiAgent = useAgentsStore((s) => s.isMultiAgent());
 
   const [name, setName] = useState(job?.name || '');
   const [message, setMessage] = useState(job?.message || '');
+  const [agentId, setAgentId] = useState(job?.agentId || 'main');
   // Extract cron expression string from CronSchedule object or use as-is if string
   const initialSchedule = (() => {
     const s = job?.schedule;
@@ -222,6 +226,7 @@ function TaskDialog({ job, onClose, onSave }: TaskDialogProps) {
         message: message.trim(),
         schedule: finalSchedule,
         enabled,
+        agentId: isMultiAgent ? agentId : undefined,
       });
       onClose();
       toast.success(job ? t('toast.updated') : t('toast.created'));
@@ -329,6 +334,30 @@ function TaskDialog({ job, onClose, onSave }: TaskDialogProps) {
             <Switch checked={enabled} onCheckedChange={setEnabled} />
           </div>
 
+          {/* Agent Selection (multi-agent mode only) */}
+          {isMultiAgent && (
+            <div className="space-y-2.5">
+              <Label className="text-[14px] text-foreground/80 font-bold">
+                {t('dialog.assignAgent', '执行智能体')}
+              </Label>
+              <select
+                value={agentId}
+                onChange={(e) => setAgentId(e.target.value)}
+                className="w-full h-[44px] rounded-xl font-mono text-[13px] bg-[#eeece3] dark:bg-[#151514] border border-black/10 dark:border-white/10 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 shadow-sm transition-all text-foreground px-3"
+              >
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.identity?.emoji ? `${a.identity.emoji} ` : ''}{a.name} ({a.id})
+                    {a.role === 'lead' ? ' [主管]' : a.role === 'sub' ? ' [执行]' : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[12px] text-muted-foreground/80">
+                {t('dialog.assignAgentDesc', '选择哪个智能体来执行此定时任务')}
+              </p>
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4">
             <Button variant="outline" onClick={onClose} className="rounded-full px-6 h-[42px] text-[13px] font-semibold border-black/20 dark:border-white/20 bg-transparent hover:bg-black/5 dark:hover:bg-white/5 text-foreground/80 hover:text-foreground shadow-sm">
@@ -366,6 +395,8 @@ interface CronJobCardProps {
 function CronJobCard({ job, onToggle, onEdit, onDelete, onTrigger }: CronJobCardProps) {
   const { t } = useTranslation('cron');
   const [triggering, setTriggering] = useState(false);
+  const agents = useAgentsStore((s) => s.agents);
+  const boundAgent = job.agentId ? agents.find(a => a.id === job.agentId) : null;
 
   const handleTrigger = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -399,6 +430,11 @@ function CronJobCard({ job, onToggle, onEdit, onDelete, onTrigger }: CronJobCard
           <div className="flex flex-col min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-[16px] font-semibold text-foreground truncate">{job.name}</h3>
+              {boundAgent && boundAgent.id !== 'main' && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 shrink-0">
+                  {boundAgent.identity?.emoji || '🤖'} {boundAgent.name}
+                </span>
+              )}
               <div 
                 className={cn(
                   "w-2 h-2 rounded-full shrink-0",

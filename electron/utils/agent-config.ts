@@ -36,6 +36,14 @@ export interface AgentConfigEntry {
     allow?: string[];
     deny?: string[];
   };
+  /** Agent role in the multi-agent hierarchy */
+  role?: 'lead' | 'sub';
+  /** Parent agent ID (for sub-agents) */
+  parentId?: string;
+  /** Allow cross-agent communication */
+  allowCrossComm?: boolean;
+  /** Require @mention in channels (recommended for sub-agents) */
+  requireMention?: boolean;
   [key: string]: unknown;
 }
 
@@ -46,6 +54,16 @@ export interface CreateAgentInput {
   model?: string;
   /** Custom SOUL.md content – if provided, written instead of template */
   soulMd?: string;
+  /** Role in the org hierarchy */
+  role?: 'lead' | 'sub';
+  /** Parent agent ID (for sub-agents) */
+  parentId?: string;
+  /** Allow cross-agent communication */
+  allowCrossComm?: boolean;
+  /** Emoji for identity display */
+  emoji?: string;
+  /** Require @mention in channels */
+  requireMention?: boolean;
 }
 
 export interface AgentsConfig {
@@ -138,7 +156,7 @@ export async function listAgentsFromConfig(): Promise<AgentConfigEntry[]> {
  * 3. Creates agentDir for sessions/state
  */
 export async function createAgent(input: CreateAgentInput): Promise<AgentConfigEntry> {
-  const { id, name, description, model, soulMd } = input;
+  const { id, name, description, model, soulMd, role, parentId, allowCrossComm, emoji, requireMention } = input;
 
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error('Invalid agent ID: must be alphanumeric, hyphens, or underscores');
@@ -160,15 +178,34 @@ export async function createAgent(input: CreateAgentInput): Promise<AgentConfigE
   const agentDir = join(OPENCLAW_DIR, 'agents', id, 'agent');
   const sessionsDir = join(OPENCLAW_DIR, 'agents', id, 'sessions');
 
-  // Build agent entry — only include fields recognized by OpenClaw's config schema.
-  // Fields like `name` and `description` are NOT recognized by OpenClaw;
-  // we store the config-safe subset in openclaw.json.
+  // Build agent entry — include hierarchy fields for multi-agent support.
   const configEntry: AgentConfigEntry = {
     id,
     workspace,
     agentDir,
   };
   if (model) configEntry.model = model;
+
+  // Multi-agent hierarchy fields
+  if (role) configEntry.role = role;
+  if (parentId) configEntry.parentId = parentId;
+  if (allowCrossComm) configEntry.allowCrossComm = true;
+  if (typeof requireMention === 'boolean') configEntry.requireMention = requireMention;
+  if (emoji) {
+    configEntry.identity = { emoji };
+  }
+
+  // If this agent has a parent, add it to the parent's subagents.allowAgents
+  if (parentId) {
+    const parentAgent = config.agents.list.find((a) => a.id === parentId);
+    if (parentAgent) {
+      if (!parentAgent.subagents) parentAgent.subagents = { allowAgents: [] };
+      if (!parentAgent.subagents.allowAgents) parentAgent.subagents.allowAgents = [];
+      if (!parentAgent.subagents.allowAgents.includes(id)) {
+        parentAgent.subagents.allowAgents.push(id);
+      }
+    }
+  }
 
   // Append to list
   config.agents.list.push(configEntry);
@@ -286,6 +323,27 @@ export async function deleteAgent(agentId: string, removeFiles = false): Promise
 }
 
 // ── SOUL.md Operations ───────────────────────────────────────────
+
+/**
+ * Rename an agent (update its display name in the config).
+ */
+export async function renameAgent(agentId: string, newName: string): Promise<void> {
+  const config = await readConfig();
+  if (!config.agents?.list || !Array.isArray(config.agents.list)) {
+    throw new Error('No agents configured');
+  }
+  const entry = config.agents.list.find((a) => a.id === agentId);
+  if (!entry) {
+    throw new Error(`Agent "${agentId}" not found`);
+  }
+  entry.name = newName.trim() || agentId;
+  // Also update identity.name for consistency
+  if (entry.identity) {
+    entry.identity.name = entry.name;
+  }
+  await writeConfig(config);
+  logger.info('Agent renamed', { agentId, newName: entry.name });
+}
 
 /**
  * Resolve the workspace path for a given agent ID from the config,

@@ -5,7 +5,7 @@
  */
 import { create } from 'zustand';
 import { invokeIpc } from '@/lib/api-client';
-import type { Agent } from '@/types/agent';
+import type { Agent, AgentRole } from '@/types/agent';
 
 /** Input for creating a new agent */
 export interface CreateAgentInput {
@@ -15,6 +15,16 @@ export interface CreateAgentInput {
   model?: string;
   /** Custom SOUL.md content */
   soulMd?: string;
+  /** Role in the org hierarchy */
+  role?: AgentRole;
+  /** Parent agent ID (for sub-agents) */
+  parentId?: string;
+  /** Allow cross-agent communication */
+  allowCrossComm?: boolean;
+  /** Emoji for visual identity */
+  emoji?: string;
+  /** Whether to require @mention in channels */
+  requireMention?: boolean;
 }
 
 interface AgentsState {
@@ -38,6 +48,8 @@ interface AgentsState {
   createAgent: (input: CreateAgentInput) => Promise<boolean>;
   /** Delete an agent by ID */
   deleteAgent: (agentId: string, removeFiles?: boolean) => Promise<boolean>;
+  /** Rename an agent */
+  renameAgent: (agentId: string, name: string) => Promise<boolean>;
   /** Read SOUL.md content for an agent */
   readSoul: (agentId: string) => Promise<string>;
   /** Write SOUL.md content for an agent */
@@ -192,6 +204,28 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
       return true;
     } catch (err) {
       console.error('Failed to delete agent:', err);
+      set({ saving: false, error: String(err) });
+      return false;
+    }
+  },
+
+  renameAgent: async (agentId: string, name: string) => {
+    set({ saving: true, error: null });
+    try {
+      const result = await invokeIpc('agent:rename', { agentId, name }) as { success?: boolean; ok?: boolean; error?: { message?: string } };
+      if (result && result.ok === false && result.error) {
+        throw new Error(result.error.message || 'Failed to rename agent');
+      }
+      // Update local state immediately
+      set((state) => ({
+        saving: false,
+        agents: state.agents.map((a) =>
+          a.id === agentId ? { ...a, name } : a,
+        ),
+      }));
+      return true;
+    } catch (err) {
+      console.error('Failed to rename agent:', err);
       set({ saving: false, error: String(err) });
       return false;
     }

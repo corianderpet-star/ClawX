@@ -79,8 +79,8 @@
         },
         "allowedUsers": {
           "label": "Allowed User IDs",
-          "placeholder": "e.g. 123456789, 987654321",
-          "description": "Comma separated list of User IDs allowed to use the bot. Required for security."
+          "placeholder": "e.g. 123456789, -5016577710",
+          "description": "Comma separated list of User/Group IDs allowed to use the bot. Required for security. Group IDs start with a minus sign (e.g. -5016577710) and will be auto-configured as group permissions."
         }
       },
       "instructions": [

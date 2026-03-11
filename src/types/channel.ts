@@ -236,6 +236,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.telegram.instructions.3',
       'channels:meta.telegram.instructions.4',
     ],
+    supportsMultiAccount: true,
   },
   discord: {
     id: 'discord',
@@ -278,6 +279,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.discord.instructions.4',
       'channels:meta.discord.instructions.5',
     ],
+    supportsMultiAccount: true,
   },
 
   whatsapp: {
@@ -316,6 +318,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.signal.instructions.1',
       'channels:meta.signal.instructions.2',
     ],
+    supportsMultiAccount: true,
   },
   feishu: {
     id: 'feishu',
@@ -350,6 +353,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.feishu.instructions.4',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
   imessage: {
     id: 'imessage',
@@ -379,6 +383,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.imessage.instructions.1',
       'channels:meta.imessage.instructions.2',
     ],
+    supportsMultiAccount: true,
   },
   matrix: {
     id: 'matrix',
@@ -409,6 +414,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.matrix.instructions.2',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
   line: {
     id: 'line',
@@ -441,6 +447,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.line.instructions.2',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
   msteams: {
     id: 'msteams',
@@ -474,6 +481,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.msteams.instructions.3',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
   googlechat: {
     id: 'googlechat',
@@ -497,6 +505,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.googlechat.instructions.2',
       'channels:meta.googlechat.instructions.3',
     ],
+    supportsMultiAccount: true,
   },
   mattermost: {
     id: 'mattermost',
@@ -527,6 +536,7 @@ export const CHANNEL_META: Record<ChannelType, ChannelMeta> = {
       'channels:meta.mattermost.instructions.2',
     ],
     isPlugin: true,
+    supportsMultiAccount: true,
   },
 };
 

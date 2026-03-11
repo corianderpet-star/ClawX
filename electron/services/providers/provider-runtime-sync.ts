@@ -17,6 +17,8 @@ import { logger } from '../../utils/logger';
 
 const GOOGLE_OAUTH_RUNTIME_PROVIDER = 'google-gemini-cli';
 const GOOGLE_OAUTH_DEFAULT_MODEL_REF = `${GOOGLE_OAUTH_RUNTIME_PROVIDER}/gemini-3-pro-preview`;
+const OPENAI_CODEX_RUNTIME_PROVIDER = 'openai-codex';
+const OPENAI_CODEX_DEFAULT_MODEL_REF = `${OPENAI_CODEX_RUNTIME_PROVIDER}/gpt-5.2-codex`;
 
 type RuntimeProviderSyncContext = {
   runtimeProviderKey: string;
@@ -40,12 +42,25 @@ async function resolveRuntimeProviderKey(config: ProviderConfig): Promise<string
   if (config.type === 'google' && account?.authMode === 'oauth_browser') {
     return GOOGLE_OAUTH_RUNTIME_PROVIDER;
   }
+  if (config.type === 'openai' && account?.authMode === 'oauth_browser') {
+    return OPENAI_CODEX_RUNTIME_PROVIDER;
+  }
   return getOpenClawProviderKey(config.type, config.id);
 }
 
 async function isGoogleBrowserOAuthProvider(config: ProviderConfig): Promise<boolean> {
   const account = await getProviderAccount(config.id);
   if (config.type !== 'google' || account?.authMode !== 'oauth_browser') {
+    return false;
+  }
+
+  const secret = await getProviderSecret(config.id);
+  return secret?.type === 'oauth';
+}
+
+async function isOpenAICodexOAuthProvider(config: ProviderConfig): Promise<boolean> {
+  const account = await getProviderAccount(config.id);
+  if (config.type !== 'openai' || account?.authMode !== 'oauth_browser') {
     return false;
   }
 
@@ -123,6 +138,28 @@ function scheduleGatewayRestart(
 
   logger.info(message);
   gatewayManager.debouncedRestart(options?.delayMs);
+}
+
+/**
+ * Lightweight config reload via SIGUSR1 (falls back to restart on Windows
+ * or when the Gateway isn't running).  Use this for changes that only touch
+ * auth-profiles.json or agents.defaults — the Gateway can pick these up
+ * without a full process restart.
+ */
+function scheduleGatewayReload(
+  gatewayManager: GatewayManager | undefined,
+  message: string,
+): void {
+  if (!gatewayManager) {
+    return;
+  }
+  if (gatewayManager.getStatus().state !== 'running') {
+    return;
+  }
+  logger.info(message);
+  void gatewayManager.reload().catch((err) => {
+    logger.warn('Gateway config reload failed, will pick up changes on next restart:', err);
+  });
 }
 
 export async function syncProviderApiKeyToRuntime(
@@ -215,6 +252,14 @@ async function syncProviderSecretToRuntime(
 
 async function resolveRuntimeSyncContext(config: ProviderConfig): Promise<RuntimeProviderSyncContext | null> {
   const runtimeProviderKey = await resolveRuntimeProviderKey(config);
+
+  // Implicit OAuth providers (openai-codex, google-gemini-cli) are managed
+  // entirely through auth-profiles.json; they don't need explicit provider
+  // config in openclaw.json.  Returning null skips the config sync.
+  if (runtimeProviderKey === OPENAI_CODEX_RUNTIME_PROVIDER) {
+    return null;
+  }
+
   const meta = getProviderConfig(config.type);
   const api = config.type === 'custom' || config.type === 'ollama' ? 'openai-completions' : meta?.api;
   if (!api) {
@@ -268,11 +313,18 @@ async function syncProviderToRuntime(
   apiKey: string | undefined,
 ): Promise<RuntimeProviderSyncContext | null> {
   const context = await resolveRuntimeSyncContext(config);
+
+  // Always sync the secret (auth-profiles.json) — this is a hot update that
+  // the Gateway reads dynamically without requiring a process restart.
+  const runtimeProviderKey = context?.runtimeProviderKey ?? await resolveRuntimeProviderKey(config);
+  await syncProviderSecretToRuntime(config, runtimeProviderKey, apiKey);
+
+  // Implicit OAuth providers (openai-codex, google-gemini-cli) don't need
+  // explicit provider config in openclaw.json; skip the config sync.
   if (!context) {
     return null;
   }
 
-  await syncProviderSecretToRuntime(config, context.runtimeProviderKey, apiKey);
   await syncRuntimeProviderConfig(config, context);
   await syncCustomProviderAgentModel(config, context.runtimeProviderKey, apiKey);
   return context;
@@ -300,11 +352,9 @@ export async function syncUpdatedProviderToRuntime(
   gatewayManager?: GatewayManager,
 ): Promise<void> {
   const context = await syncProviderToRuntime(config, apiKey);
-  if (!context) {
-    return;
-  }
 
-  const ock = context.runtimeProviderKey;
+  // Determine the runtime provider key — works even without full context.
+  const ock = context?.runtimeProviderKey ?? await resolveRuntimeProviderKey(config);
   const fallbackModels = await getProviderFallbackModelRefs(config);
 
   const defaultProviderId = await getDefaultProvider();
@@ -320,6 +370,17 @@ export async function syncUpdatedProviderToRuntime(
     }
   }
 
+  if (!context) {
+    // Implicit OAuth provider — only auth-profiles and agent defaults changed.
+    // These are hot-reloadable; a lightweight reload signal is sufficient.
+    scheduleGatewayReload(
+      gatewayManager,
+      `Reloading Gateway config after updating implicit OAuth provider "${ock}"`,
+    );
+    return;
+  }
+
+  // Infrastructure-level config (models.providers) changed → full restart.
   scheduleGatewayRestart(
     gatewayManager,
     `Scheduling Gateway restart after updating provider "${ock}" config`,
@@ -372,7 +433,8 @@ export async function syncDefaultProviderToRuntime(
   const fallbackModels = await getProviderFallbackModelRefs(provider);
   const oauthTypes = ['qwen-portal', 'minimax-portal', 'minimax-portal-cn'];
   const isGoogleOAuthProvider = await isGoogleBrowserOAuthProvider(provider);
-  const isOAuthProvider = (oauthTypes.includes(provider.type) && !providerKey) || isGoogleOAuthProvider;
+  const isCodexOAuthProvider = await isOpenAICodexOAuthProvider(provider);
+  const isOAuthProvider = (oauthTypes.includes(provider.type) && !providerKey) || isGoogleOAuthProvider || isCodexOAuthProvider;
 
   if (!isOAuthProvider) {
     const modelOverride = provider.model
@@ -412,9 +474,36 @@ export async function syncDefaultProviderToRuntime(
 
       await setOpenClawDefaultModel(GOOGLE_OAUTH_RUNTIME_PROVIDER, modelOverride, fallbackModels);
       logger.info(`Configured openclaw.json for Google browser OAuth provider "${provider.id}"`);
-      scheduleGatewayRestart(
+      scheduleGatewayReload(
         gatewayManager,
-        `Scheduling Gateway restart after provider switch to "${GOOGLE_OAUTH_RUNTIME_PROVIDER}"`,
+        `Reloading Gateway config after Google OAuth provider switch to "${GOOGLE_OAUTH_RUNTIME_PROVIDER}"`,
+      );
+      return;
+    }
+
+    if (isCodexOAuthProvider) {
+      const secret = await getProviderSecret(provider.id);
+      if (secret?.type === 'oauth') {
+        await saveOAuthTokenToOpenClaw(OPENAI_CODEX_RUNTIME_PROVIDER, {
+          access: secret.accessToken,
+          refresh: secret.refreshToken,
+          expires: secret.expiresAt,
+          email: secret.email,
+          projectId: secret.subject,
+        });
+      }
+
+      const modelOverride = provider.model
+        ? (provider.model.startsWith(`${OPENAI_CODEX_RUNTIME_PROVIDER}/`)
+          ? provider.model
+          : `${OPENAI_CODEX_RUNTIME_PROVIDER}/${provider.model}`)
+        : OPENAI_CODEX_DEFAULT_MODEL_REF;
+
+      await setOpenClawDefaultModel(OPENAI_CODEX_RUNTIME_PROVIDER, modelOverride, fallbackModels);
+      logger.info(`Configured openclaw.json for OpenAI Codex OAuth provider "${provider.id}"`);
+      scheduleGatewayReload(
+        gatewayManager,
+        `Reloading Gateway config after Codex OAuth provider switch to "${OPENAI_CODEX_RUNTIME_PROVIDER}"`,
       );
       return;
     }

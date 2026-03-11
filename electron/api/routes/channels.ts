@@ -1,8 +1,4 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { app } from 'electron';
-import { existsSync, cpSync, mkdirSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import {
   deleteChannelConfig,
   getChannelFormValues,
@@ -12,91 +8,10 @@ import {
   validateChannelConfig,
   validateChannelCredentials,
 } from '../../utils/channel-config';
+import { ensureDingTalkPluginInstalled, ensureQQBotPluginInstalled } from '../../utils/plugin-install';
 import { whatsAppLoginManager } from '../../utils/whatsapp-login';
 import type { HostApiContext } from '../context';
 import { parseJsonBody, sendJson } from '../route-utils';
-
-async function ensureDingTalkPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
-  const targetDir = join(homedir(), '.openclaw', 'extensions', 'dingtalk');
-  const targetManifest = join(targetDir, 'openclaw.plugin.json');
-
-  if (existsSync(targetManifest)) {
-    return { installed: true };
-  }
-
-  const candidateSources = app.isPackaged
-    ? [
-      join(process.resourcesPath, 'openclaw-plugins', 'dingtalk'),
-      join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', 'dingtalk'),
-      join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', 'dingtalk'),
-    ]
-    : [
-      join(app.getAppPath(), 'build', 'openclaw-plugins', 'dingtalk'),
-      join(process.cwd(), 'build', 'openclaw-plugins', 'dingtalk'),
-      join(__dirname, '../../../build/openclaw-plugins/dingtalk'),
-    ];
-
-  const sourceDir = candidateSources.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
-  if (!sourceDir) {
-    return {
-      installed: false,
-      warning: `Bundled DingTalk plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
-    };
-  }
-
-  try {
-    mkdirSync(join(homedir(), '.openclaw', 'extensions'), { recursive: true });
-    rmSync(targetDir, { recursive: true, force: true });
-    cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
-    if (!existsSync(targetManifest)) {
-      return { installed: false, warning: 'Failed to install DingTalk plugin mirror (manifest missing).' };
-    }
-    return { installed: true };
-  } catch {
-    return { installed: false, warning: 'Failed to install bundled DingTalk plugin mirror' };
-  }
-}
-
-async function ensureQQBotPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
-  const targetDir = join(homedir(), '.openclaw', 'extensions', 'qqbot');
-  const targetManifest = join(targetDir, 'openclaw.plugin.json');
-
-  if (existsSync(targetManifest)) {
-    return { installed: true };
-  }
-
-  const candidateSources = app.isPackaged
-    ? [
-      join(process.resourcesPath, 'openclaw-plugins', 'qqbot'),
-      join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', 'qqbot'),
-      join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', 'qqbot'),
-    ]
-    : [
-      join(app.getAppPath(), 'build', 'openclaw-plugins', 'qqbot'),
-      join(process.cwd(), 'build', 'openclaw-plugins', 'qqbot'),
-      join(__dirname, '../../../build/openclaw-plugins/qqbot'),
-    ];
-
-  const sourceDir = candidateSources.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
-  if (!sourceDir) {
-    return {
-      installed: false,
-      warning: `Bundled QQBot plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
-    };
-  }
-
-  try {
-    mkdirSync(join(homedir(), '.openclaw', 'extensions'), { recursive: true });
-    rmSync(targetDir, { recursive: true, force: true });
-    cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
-    if (!existsSync(targetManifest)) {
-      return { installed: false, warning: 'Failed to install QQBot plugin mirror (manifest missing).' };
-    }
-    return { installed: true };
-  } catch {
-    return { installed: false, warning: 'Failed to install bundled QQBot plugin mirror' };
-  }
-}
 
 export async function handleChannelRoutes(
   req: IncomingMessage,
@@ -168,6 +83,10 @@ export async function handleChannelRoutes(
         }
       }
       await saveChannelConfig(body.channelType, body.config, body.accountId);
+      // Trigger hot-reload so Gateway picks up the new config without a full restart
+      if (ctx.gatewayManager.getStatus().state !== 'stopped') {
+        ctx.gatewayManager.debouncedReload();
+      }
       sendJson(res, 200, { success: true });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
@@ -205,6 +124,10 @@ export async function handleChannelRoutes(
       const channelType = decodeURIComponent(url.pathname.slice('/api/channels/config/'.length));
       const accountId = url.searchParams.get('accountId') || undefined;
       await deleteChannelConfig(channelType, accountId);
+      // Trigger hot-reload so Gateway picks up the removed channel without a full restart
+      if (ctx.gatewayManager.getStatus().state !== 'stopped') {
+        ctx.gatewayManager.debouncedReload();
+      }
       sendJson(res, 200, { success: true });
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });
@@ -212,6 +135,5 @@ export async function handleChannelRoutes(
     return true;
   }
 
-  void ctx;
   return false;
 }

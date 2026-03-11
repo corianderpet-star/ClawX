@@ -1,11 +1,12 @@
 /**
  * Create Agent Dialog — Multi-step Wizard
  * Step 1: Basic info (ID, name, description)
- * Step 2: Model configuration (alias-based)
- * Step 3: SOUL.md editor — the agent's core role definition
+ * Step 2: Role & Hierarchy (lead/sub, parent agent, cross-communication)
+ * Step 3: Model configuration (alias-based)
+ * Step 4: SOUL.md editor — the agent's core role definition
  *
  * Based on the recommended OpenClaw multi-agent configuration flow:
- * create → set model → write SOUL.md → test
+ * create → set role/hierarchy → set model → write SOUL.md → test
  */
 import { useState, useCallback, useMemo } from 'react';
 import {
@@ -18,11 +19,15 @@ import {
   Cpu,
   FileText,
   CheckCircle2,
+  Crown,
+  Users,
+  Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { useAgentsStore, type CreateAgentInput } from '@/stores/agents';
 import { cn } from '@/lib/utils';
+import type { AgentRole } from '@/types/agent';
 
 interface CreateAgentDialogProps {
   open: boolean;
@@ -30,7 +35,7 @@ interface CreateAgentDialogProps {
   onCreated?: (agentId: string) => void;
 }
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
 
 /** Default SOUL.md template for new agents */
 const DEFAULT_SOUL_TEMPLATE = `# SOUL.md — Who You Are
@@ -60,6 +65,7 @@ Be the assistant you'd actually want to talk to. Concise when needed, thorough w
 export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialogProps) {
   const { t } = useTranslation(['agents', 'common']);
   const createAgent = useAgentsStore((s) => s.createAgent);
+  const agents = useAgentsStore((s) => s.agents);
   const saving = useAgentsStore((s) => s.saving);
 
   const [step, setStep] = useState(1);
@@ -69,8 +75,19 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
     description: '',
     model: '',
     soulMd: DEFAULT_SOUL_TEMPLATE,
+    // Multi-agent hierarchy fields
+    role: '' as '' | AgentRole,
+    parentId: '',
+    allowCrossComm: false,
+    emoji: '',
+    requireMention: true,
   });
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Get potential parent agents (only lead agents or main agent)
+  const parentAgentOptions = useMemo(() => {
+    return agents.filter(a => a.role === 'lead' || a.isMain || (!a.role && !a.parentId));
+  }, [agents]);
 
   const resetForm = useCallback(() => {
     setFormData({
@@ -79,6 +96,11 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
       description: '',
       model: '',
       soulMd: DEFAULT_SOUL_TEMPLATE,
+      role: '',
+      parentId: '',
+      allowCrossComm: false,
+      emoji: '',
+      requireMention: true,
     });
     setFormError(null);
     setStep(1);
@@ -130,6 +152,12 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
     if (formData.description.trim()) input.description = formData.description.trim();
     if (formData.model.trim()) input.model = formData.model.trim();
     if (formData.soulMd.trim()) input.soulMd = formData.soulMd.trim();
+    // Multi-agent hierarchy fields
+    if (formData.role) input.role = formData.role;
+    if (formData.parentId) input.parentId = formData.parentId;
+    if (formData.allowCrossComm) input.allowCrossComm = true;
+    if (formData.emoji.trim()) input.emoji = formData.emoji.trim();
+    if (formData.role === 'sub') input.requireMention = formData.requireMention;
 
     const success = await createAgent(input);
     if (success) {
@@ -144,8 +172,9 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
 
   const steps = useMemo(() => [
     { num: 1, icon: Bot, label: t('agents:wizard.stepBasic') },
-    { num: 2, icon: Cpu, label: t('agents:wizard.stepModel') },
-    { num: 3, icon: FileText, label: t('agents:wizard.stepSoul') },
+    { num: 2, icon: Users, label: t('agents:wizard.stepHierarchy', '角色层级') },
+    { num: 3, icon: Cpu, label: t('agents:wizard.stepModel') },
+    { num: 4, icon: FileText, label: t('agents:wizard.stepSoul') },
   ], [t]);
 
   if (!open) return null;
@@ -252,11 +281,186 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
                   disabled={saving}
                 />
               </div>
+
+              {/* Emoji */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="agent-emoji">
+                  {t('agents:form.emoji', 'Emoji 图标')}
+                </label>
+                <input
+                  id="agent-emoji"
+                  type="text"
+                  value={formData.emoji}
+                  onChange={(e) => setFormData({ ...formData, emoji: e.target.value })}
+                  placeholder={t('agents:form.emojiPlaceholder', '例如 🦞 📊 🎨 💻')}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  disabled={saving}
+                  maxLength={4}
+                />
+              </div>
             </div>
           )}
 
-          {/* ── Step 2: Model Configuration ───────────────────── */}
+          {/* ── Step 2: Role & Hierarchy ──────────────────────── */}
           {step === 2 && (
+            <div className="space-y-5">
+              <p className="text-sm text-muted-foreground mb-2">
+                {t('agents:wizard.hierarchyDesc', '设置此智能体在组织架构中的角色和层级关系。')}
+              </p>
+
+              {/* Role Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {t('agents:form.role', '角色')}
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all hover:shadow-sm',
+                      formData.role === 'lead'
+                        ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/20'
+                        : 'border-muted hover:border-muted-foreground/30',
+                    )}
+                    onClick={() => setFormData({ ...formData, role: 'lead', parentId: '' })}
+                  >
+                    <Crown className={cn('h-6 w-6', formData.role === 'lead' ? 'text-amber-600' : 'text-muted-foreground')} />
+                    <div className="text-center">
+                      <p className="text-sm font-medium">{t('agents:form.roleLead', '主管 (Lead)')}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {t('agents:form.roleLeadDesc', '调度中枢，分发任务给下属智能体')}
+                      </p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'flex flex-col items-center gap-2 rounded-xl border-2 p-4 transition-all hover:shadow-sm',
+                      formData.role === 'sub'
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+                        : 'border-muted hover:border-muted-foreground/30',
+                    )}
+                    onClick={() => setFormData({ ...formData, role: 'sub' })}
+                  >
+                    <Bot className={cn('h-6 w-6', formData.role === 'sub' ? 'text-blue-600' : 'text-muted-foreground')} />
+                    <div className="text-center">
+                      <p className="text-sm font-medium">{t('agents:form.roleSub', '执行 (Sub)')}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {t('agents:form.roleSubDesc', '专注特定任务，由主管调度指挥')}
+                      </p>
+                    </div>
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  {t('agents:form.roleHint', '不选择则为独立智能体，不参与层级协作。')}
+                </p>
+              </div>
+
+              {/* Parent Agent (only for sub agents) */}
+              {formData.role === 'sub' && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="agent-parent">
+                    {t('agents:form.parentAgent', '上级智能体')} <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    id="agent-parent"
+                    value={formData.parentId}
+                    onChange={(e) => setFormData({ ...formData, parentId: e.target.value })}
+                    className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    disabled={saving}
+                  >
+                    <option value="">{t('agents:form.selectParent', '选择上级智能体...')}</option>
+                    {parentAgentOptions.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.identity?.emoji ? `${a.identity.emoji} ` : ''}{a.name} ({a.id})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('agents:form.parentHint', '此智能体将作为所选上级智能体的下属。')}
+                  </p>
+                </div>
+              )}
+
+              {/* Require Mention (for sub agents) */}
+              {formData.role === 'sub' && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">{t('agents:form.requireMention', '需要 @提及')}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {t('agents:form.requireMentionDesc', '在频道中只有被 @提及 时才会响应（推荐子智能体开启）')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={cn(
+                      'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                      formData.requireMention ? 'bg-primary' : 'bg-muted',
+                    )}
+                    onClick={() => setFormData({ ...formData, requireMention: !formData.requireMention })}
+                  >
+                    <span className={cn(
+                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform',
+                      formData.requireMention ? 'translate-x-4.5' : 'translate-x-0.5',
+                    )} />
+                  </button>
+                </div>
+              )}
+
+              {/* Cross-Agent Communication */}
+              {formData.role === 'lead' && (
+                <div className="flex items-center justify-between rounded-lg border p-3">
+                  <div>
+                    <p className="text-sm font-medium">
+                      <Network className="h-3.5 w-3.5 inline mr-1.5" />
+                      {t('agents:form.crossComm', '跨 Agent 通信')}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {t('agents:form.crossCommDesc', '允许下属智能体之间互相通信和协作')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className={cn(
+                      'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                      formData.allowCrossComm ? 'bg-primary' : 'bg-muted',
+                    )}
+                    onClick={() => setFormData({ ...formData, allowCrossComm: !formData.allowCrossComm })}
+                  >
+                    <span className={cn(
+                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform',
+                      formData.allowCrossComm ? 'translate-x-4.5' : 'translate-x-0.5',
+                    )} />
+                  </button>
+                </div>
+              )}
+
+              {/* Architecture preview */}
+              {formData.role && (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs font-medium mb-2">{t('agents:wizard.architecturePreview', '架构预览')}</p>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    {formData.role === 'lead' && (
+                      <>
+                        <p>🏢 {formData.name || formData.id || '...'} <span className="text-amber-600 font-medium">[主管]</span></p>
+                        <p className="pl-4">├── 下属智能体将自动关联到此主管</p>
+                        {formData.allowCrossComm && <p className="pl-4">└── ✅ 下属间可互相通信</p>}
+                      </>
+                    )}
+                    {formData.role === 'sub' && formData.parentId && (
+                      <>
+                        <p>🏢 {parentAgentOptions.find(a => a.id === formData.parentId)?.name || formData.parentId} <span className="text-amber-600 font-medium">[主管]</span></p>
+                        <p className="pl-4">└── {formData.emoji || '🤖'} {formData.name || formData.id || '...'} <span className="text-blue-600 font-medium">[执行]</span></p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 3: Model Configuration ───────────────────── */}
+          {step === 3 && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground mb-2">{t('agents:wizard.modelDesc')}</p>
 
@@ -303,8 +507,8 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
             </div>
           )}
 
-          {/* ── Step 3: SOUL.md Editor ────────────────────────── */}
-          {step === 3 && (
+          {/* ── Step 4: SOUL.md Editor ────────────────────────── */}
+          {step === 4 && (
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground">{t('agents:wizard.soulDesc')}</p>

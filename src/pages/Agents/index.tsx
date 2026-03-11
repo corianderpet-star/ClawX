@@ -1,12 +1,12 @@
 /**
  * Agents Page
- * View and manage multiple AI agents.
- * Lists all available agents from the OpenClaw Gateway and allows
- * switching between them or starting new conversations.
+ * View and manage multiple AI agents with org-chart tree visualization.
+ * Supports "company-style" multi-agent hierarchy: lead agents dispatch
+ * tasks to sub-agents, visualized as an org chart.
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, MessageSquare, Sparkles, ArrowRight, RefreshCw, AlertCircle, Plus, Trash2, FileText, FolderOpen } from 'lucide-react';
+import { Bot, MessageSquare, Sparkles, ArrowRight, RefreshCw, AlertCircle, Plus, Trash2, FileText, FolderOpen, Network, LayoutGrid, GitBranch, Settings } from 'lucide-react';
 import { useAgentsStore } from '@/stores/agents';
 import { useChatStore } from '@/stores/chat';
 import { useGatewayStore } from '@/stores/gateway';
@@ -18,6 +18,8 @@ import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { CreateAgentDialog } from './CreateAgentDialog';
 import { EditSoulDialog } from './EditSoulDialog';
+import { AgentOrgChart } from './AgentOrgChart';
+import { AgentSettingsDialog } from './AgentSettingsDialog';
 
 export function Agents() {
   const { t } = useTranslation(['common', 'agents']);
@@ -40,6 +42,8 @@ export function Agents() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<{ id: string; name: string } | null>(null);
   const [soulEditAgent, setSoulEditAgent] = useState<{ id: string; name: string } | null>(null);
+  const [settingsAgent, setSettingsAgent] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'tree' | 'grid'>(isMultiAgent ? 'tree' : 'grid');
 
   useEffect(() => {
     if (isGatewayRunning) {
@@ -77,6 +81,29 @@ export function Agents() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          {isMultiAgent && (
+            <div className="flex items-center rounded-lg border bg-muted/30 p-0.5">
+              <Button
+                variant={viewMode === 'tree' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-7 px-2.5"
+                onClick={() => setViewMode('tree')}
+                title={t('agents:viewTree', '树形视图')}
+              >
+                <GitBranch className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                size="sm"
+                className="h-7 px-2.5"
+                onClick={() => setViewMode('grid')}
+                title={t('agents:viewGrid', '网格视图')}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -111,8 +138,18 @@ export function Agents() {
         </div>
       )}
 
-      {/* Agent Grid */}
-      {agents.length > 0 && (
+      {/* Agent Views */}
+      {agents.length > 0 && viewMode === 'tree' && isMultiAgent && (
+        <AgentOrgChart
+          agents={agents}
+          currentAgentId={currentAgentId}
+          onChat={handleChatWithAgent}
+          onEditSoul={setSoulEditAgent}
+          onDelete={setAgentToDelete}
+        />
+      )}
+
+      {agents.length > 0 && (viewMode === 'grid' || !isMultiAgent) && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {agents.map((agent) => (
             <div
@@ -144,6 +181,16 @@ export function Agents() {
                         {t('agents:mainBadge', 'Main')}
                       </Badge>
                     )}
+                    {agent.role === 'lead' && !agent.isMain && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0">
+                        {t('agents:leadBadge', 'Lead')}
+                      </Badge>
+                    )}
+                    {agent.role === 'sub' && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-0">
+                        {t('agents:subBadge', 'Sub')}
+                      </Badge>
+                    )}
                     {currentAgentId === agent.id && (
                       <Badge className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-0">
                         {t('agents:activeBadge', 'Active')}
@@ -164,6 +211,19 @@ export function Agents() {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span className="font-medium">{t('agents:model', 'Model')}:</span>
                     <span className="truncate">{agent.model}</span>
+                  </div>
+                )}
+                {agent.parentId && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Network className="h-3 w-3 shrink-0" />
+                    <span className="font-medium">{t('agents:parentAgent', 'Parent')}:</span>
+                    <span className="truncate">{agents.find(a => a.id === agent.parentId)?.name || agent.parentId}</span>
+                  </div>
+                )}
+                {agent.subagentIds && agent.subagentIds.length > 0 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Network className="h-3 w-3 shrink-0" />
+                    <span>{t('agents:subAgentCount', { count: agent.subagentIds.length })}</span>
                   </div>
                 )}
                 {agent.provider && (
@@ -199,6 +259,15 @@ export function Agents() {
                     ? t('agents:continueChat', 'Continue Chat')
                     : t('agents:startChat', 'Chat')}
                   <ArrowRight className="h-3.5 w-3.5 ml-1.5" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="px-2"
+                  title={t('agents:settings.title', { name: agent.name })}
+                  onClick={() => setSettingsAgent(agent.id)}
+                >
+                  <Settings className="h-3.5 w-3.5" />
                 </Button>
                 <Button
                   size="sm"
@@ -269,6 +338,13 @@ export function Agents() {
         agentId={soulEditAgent?.id || ''}
         agentName={soulEditAgent?.name || ''}
         onClose={() => setSoulEditAgent(null)}
+      />
+
+      {/* Agent Settings Dialog */}
+      <AgentSettingsDialog
+        open={!!settingsAgent}
+        agent={agents.find((a) => a.id === settingsAgent) || null}
+        onClose={() => setSettingsAgent(null)}
       />
     </div>
   );

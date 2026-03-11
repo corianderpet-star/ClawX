@@ -88,9 +88,9 @@ export async function writeOpenClawConfig(config: OpenClawConfig): Promise<void>
     }
 }
 
-// Channels whose plugins natively support the `accounts` sub-object pattern:
+// All channels support the `accounts` sub-object pattern:
 //   channels.<type>.accounts.<accountId> = { ...config }
-const MULTI_ACCOUNT_CHANNELS = ['qqbot', 'dingtalk'];
+// When accountId is provided and is not 'default', config is stored per-account.
 
 // ── Channel operations ───────────────────────────────────────────
 
@@ -196,17 +196,36 @@ export async function saveChannelConfig(
     }
 
     // Special handling for Telegram: convert allowedUsers string to allowlist array
+    // Group IDs (negative numbers starting with '-') go into `groups` config,
+    // user IDs (pure digits) go into `allowFrom`.
     if (channelType === 'telegram') {
         const { allowedUsers, ...restConfig } = config;
         transformedConfig = { ...restConfig };
 
         if (allowedUsers && typeof allowedUsers === 'string') {
-            const users = allowedUsers.split(',')
+            const entries = allowedUsers.split(/[,，]/)
                 .map(u => u.trim())
                 .filter(u => u.length > 0);
 
-            if (users.length > 0) {
-                transformedConfig.allowFrom = users;
+            const userIds: string[] = [];
+            const groupIds: string[] = [];
+            for (const entry of entries) {
+                if (entry.startsWith('-') && /^-\d+$/.test(entry)) {
+                    groupIds.push(entry);
+                } else {
+                    userIds.push(entry);
+                }
+            }
+
+            if (userIds.length > 0) {
+                transformedConfig.allowFrom = userIds;
+            }
+            if (groupIds.length > 0) {
+                const groups: Record<string, { enabled: boolean }> = {};
+                for (const gid of groupIds) {
+                    groups[gid] = { enabled: true };
+                }
+                transformedConfig.groups = groups;
             }
         }
     }
@@ -229,17 +248,35 @@ export async function saveChannelConfig(
     }
 
     // Merge with existing config
-    // For multi-account channels with a non-default accountId, store under
+    // For channels with a non-default accountId, store under
     // channels.<type>.accounts.<accountId> instead of top-level.
     const resolvedAccountId = accountId || 'default';
-    if (MULTI_ACCOUNT_CHANNELS.includes(channelType) && resolvedAccountId !== 'default') {
+    if (resolvedAccountId !== 'default') {
         if (!currentConfig.channels[channelType]) {
             currentConfig.channels[channelType] = { enabled: true };
         }
         const channelSection = currentConfig.channels[channelType] as Record<string, unknown>;
+
+        // Migration: if the channel already has top-level config keys
+        // (e.g. botToken, allowFrom) but no `accounts` sub-object, it was
+        // created before multi-account support.  Move those keys into
+        // accounts.default so every instance lives under `accounts.*`.
         if (!channelSection.accounts || typeof channelSection.accounts !== 'object') {
-            channelSection.accounts = {};
+            const metaKeys = new Set(['enabled', 'accounts']);
+            const topLevelKeys = Object.keys(channelSection).filter(k => !metaKeys.has(k));
+            if (topLevelKeys.length > 0) {
+                const defaultAccount: Record<string, unknown> = { enabled: true };
+                for (const key of topLevelKeys) {
+                    defaultAccount[key] = channelSection[key];
+                    delete channelSection[key];
+                }
+                channelSection.accounts = { default: defaultAccount };
+                logger.info('Migrated top-level channel config to accounts.default', { channelType });
+            } else {
+                channelSection.accounts = {};
+            }
         }
+
         const accounts = channelSection.accounts as Record<string, ChannelConfigData>;
         accounts[resolvedAccountId] = {
             ...accounts[resolvedAccountId],
@@ -273,7 +310,7 @@ export async function getChannelConfig(channelType: string, accountId?: string):
     if (!channelSection) return undefined;
 
     const resolvedAccountId = accountId || 'default';
-    if (MULTI_ACCOUNT_CHANNELS.includes(channelType) && resolvedAccountId !== 'default') {
+    if (resolvedAccountId !== 'default') {
         const accounts = (channelSection as Record<string, unknown>).accounts as Record<string, ChannelConfigData> | undefined;
         return accounts?.[resolvedAccountId];
     }
@@ -307,8 +344,19 @@ export async function getChannelFormValues(channelType: string, accountId?: stri
             }
         }
     } else if (channelType === 'telegram') {
+        // Merge allowFrom (user IDs) and groups (group IDs) into a single display string
+        const allIds: string[] = [];
         if (Array.isArray(saved.allowFrom)) {
-            values.allowedUsers = saved.allowFrom.join(', ');
+            allIds.push(...saved.allowFrom);
+        }
+        const groups = saved.groups as Record<string, unknown> | undefined;
+        if (groups && typeof groups === 'object') {
+            for (const gid of Object.keys(groups)) {
+                if (gid !== '*') allIds.push(gid);
+            }
+        }
+        if (allIds.length > 0) {
+            values.allowedUsers = allIds.join(', ');
         }
         for (const [key, value] of Object.entries(saved)) {
             if (typeof value === 'string' && key !== 'enabled') {
@@ -332,7 +380,7 @@ export async function deleteChannelConfig(channelType: string, accountId?: strin
     const resolvedAccountId = accountId || 'default';
 
     // For multi-account channels with a non-default accountId, only remove that account
-    if (MULTI_ACCOUNT_CHANNELS.includes(channelType) && resolvedAccountId !== 'default') {
+    if (resolvedAccountId !== 'default') {
         const channelSection = currentConfig.channels?.[channelType] as Record<string, unknown> | undefined;
         const accounts = channelSection?.accounts as Record<string, unknown> | undefined;
         if (accounts?.[resolvedAccountId]) {
@@ -458,6 +506,8 @@ export async function validateChannelCredentials(
             return validateDiscordCredentials(config);
         case 'telegram':
             return validateTelegramCredentials(config);
+        case 'qqbot':
+            return validateQQBotCredentials(config);
         default:
             return { valid: true, errors: [], warnings: ['No online validation available for this channel type.'] };
     }
@@ -566,6 +616,77 @@ async function validateTelegramCredentials(
         return { valid: false, errors: [data.description || 'Invalid bot token'], warnings: [] };
     } catch (error) {
         return { valid: false, errors: [`Connection error: ${error instanceof Error ? error.message : String(error)}`], warnings: [] };
+    }
+}
+
+async function validateQQBotCredentials(
+    config: Record<string, string>
+): Promise<CredentialValidationResult> {
+    const appId = config.appId?.trim();
+    const clientSecret = config.clientSecret?.trim();
+
+    if (!appId) return { valid: false, errors: ['App ID is required'], warnings: [] };
+    if (!clientSecret) return { valid: false, errors: ['App Secret is required'], warnings: [] };
+
+    try {
+        // Step 1: Try to obtain an Access Token using the official QQ Bot API
+        const tokenResponse = await proxyAwareFetch('https://bots.qq.com/app/getAppAccessToken', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appId, clientSecret }),
+        });
+
+        if (!tokenResponse.ok) {
+            const statusCode = tokenResponse.status;
+            if (statusCode === 401 || statusCode === 403) {
+                return { valid: false, errors: ['Invalid App ID or App Secret. Please check your credentials.'], warnings: [] };
+            }
+            const errorText = await tokenResponse.text().catch(() => '');
+            return { valid: false, errors: [`QQ Bot API error (HTTP ${statusCode}): ${errorText || 'Unknown error'}`], warnings: [] };
+        }
+
+        const tokenData = (await tokenResponse.json()) as { access_token?: string; expires_in?: string | number; code?: number; message?: string };
+
+        // The API may return 200 with an error code in the body
+        if (tokenData.code && tokenData.code !== 0) {
+            return { valid: false, errors: [tokenData.message || `QQ Bot API error code: ${tokenData.code}`], warnings: [] };
+        }
+
+        if (!tokenData.access_token) {
+            return { valid: false, errors: ['Failed to obtain access token. Please verify your App ID and App Secret.'], warnings: [] };
+        }
+
+        const details: Record<string, string> = {};
+        details.appId = appId;
+
+        // Step 2: Use the access token to call /users/@me to verify bot identity
+        try {
+            const meResponse = await proxyAwareFetch('https://api.sgroup.qq.com/users/@me', {
+                headers: { Authorization: `QQBot ${tokenData.access_token}` },
+            });
+            if (meResponse.ok) {
+                const meData = (await meResponse.json()) as { id?: string; username?: string; bot?: boolean };
+                if (meData.username) details.botUsername = meData.username;
+                if (meData.id) details.botId = meData.id;
+            }
+            // Non-critical: if /users/@me fails (e.g. insufficient permissions for guild-only bots),
+            // the token was still obtained successfully so credentials are valid.
+        } catch {
+            // Ignore — access token acquisition already proves credentials are valid
+        }
+
+        return {
+            valid: true,
+            errors: [],
+            warnings: [],
+            details,
+        };
+    } catch (error) {
+        return {
+            valid: false,
+            errors: [`Connection error when validating QQ Bot credentials: ${error instanceof Error ? error.message : String(error)}`],
+            warnings: [],
+        };
     }
 }
 

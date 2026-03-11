@@ -268,6 +268,11 @@ export function Channels() {
             setShowAddDialog(false);
             setSelectedChannelType(null);
             setEditAccountId(undefined);
+            // Re-fetch after Gateway reload completes (reload takes ~1-2s)
+            setTimeout(() => {
+              fetchChannels();
+              fetchConfiguredTypes();
+            }, 2500);
           }}
         />
       )}
@@ -479,21 +484,17 @@ function AddChannelDialog({ selectedType, editAccountId, onSelectType, onClose, 
     if (editAccountId) {
       setAccountId(editAccountId === 'default' ? '' : editAccountId);
     } else if (isMultiAccount) {
-      // Creating a new account — suggest next available ID
+      // Always suggest an accountId — even for the first instance — so every
+      // channel is stored under channels.<type>.accounts.<id> consistently.
       const existingOfType = existingChannels.filter(c => c.type === selectedType);
-      if (existingOfType.length > 0) {
-        // Auto-suggest next account ID
-        let idx = existingOfType.length + 1;
-        let suggested = `${selectedType}${idx}`;
-        const existingIds = new Set(existingOfType.map(c => c.accountId || 'default'));
-        while (existingIds.has(suggested)) {
-          idx++;
-          suggested = `${selectedType}${idx}`;
-        }
-        setAccountId(suggested);
-      } else {
-        setAccountId('');
+      let idx = existingOfType.length + 1;
+      let suggested = `${selectedType}${idx}`;
+      const existingIds = new Set(existingOfType.map(c => c.accountId || 'default'));
+      while (existingIds.has(suggested)) {
+        idx++;
+        suggested = `${selectedType}${idx}`;
       }
+      setAccountId(suggested);
     }
 
     // For a brand-new account, show blank form immediately — don't load default config
@@ -738,26 +739,35 @@ function AddChannelDialog({ selectedType, editAccountId, onSelectType, onClose, 
         toast.warning(saveResult.warning);
       }
 
-      // Step 3: Add a local channel entry for the UI
-      await addChannel({
-        type: selectedType,
-        name: channelName || (resolvedAccountId ? `${CHANNEL_NAMES[selectedType]} (${resolvedAccountId})` : CHANNEL_NAMES[selectedType]),
-        token: configValues[meta.configFields[0]?.key] || undefined,
-      });
+      // Step 3: Register channel locally for immediate UI feedback.
+      // We do NOT call channels.add RPC — the config file is already saved
+      // and the Gateway will pick it up on reload. Calling channels.add would
+      // send an accountId-less payload that overwrites the multi-account config.
+      const newChannelId = resolvedAccountId
+        ? `${selectedType}-${resolvedAccountId}`
+        : `${selectedType}-default`;
+      const currentChannels = useChannelsStore.getState().channels;
+      if (!currentChannels.some((c) => c.id === newChannelId)) {
+        useChannelsStore.getState().setChannels([
+          ...currentChannels,
+          {
+            id: newChannelId,
+            type: selectedType,
+            name: channelName || (resolvedAccountId ? `${CHANNEL_NAMES[selectedType]} (${resolvedAccountId})` : CHANNEL_NAMES[selectedType]),
+            status: 'connecting' as const,
+            accountId: resolvedAccountId,
+          },
+        ]);
+      }
 
       // Step 4: Save agent binding (if an agent other than main is selected)
       await setBinding(selectedType, selectedAgentId === 'main' ? null : selectedAgentId, resolvedAccountId);
 
-      toast.success(t('toast.channelSaved', { name: meta.name }));
-
-      // Gateway restart is now handled server-side via debouncedRestart()
-      // inside the channel:saveConfig IPC handler, so we don't need to
-      // trigger it explicitly here.  This avoids cascading restarts when
-      // multiple config changes happen in quick succession (e.g. during
-      // the setup wizard).
       toast.success(t('toast.channelConnecting', { name: meta.name }));
 
-      // Brief delay so user can see the success state before dialog closes
+      // Brief delay so user can see the success state before dialog closes.
+      // The Gateway reload (triggered server-side) will refresh channel status
+      // via the channel:status event listener.
       await new Promise((resolve) => setTimeout(resolve, 800));
       onChannelAdded();
     } catch (error) {

@@ -109,7 +109,9 @@ export async function handleProviderRoutes(
       const existing = await providerService.getAccount(accountId);
       const runtimeProviderKey = existing?.vendorId === 'google' && existing.authMode === 'oauth_browser'
         ? 'google-gemini-cli'
-        : undefined;
+        : existing?.vendorId === 'openai' && existing.authMode === 'oauth_browser'
+          ? 'openai-codex'
+          : undefined;
       if (url.searchParams.get('apiKeyOnly') === '1') {
         await providerService.deleteLegacyProviderApiKey(accountId);
         await syncDeletedProviderApiKeyToRuntime(
@@ -183,7 +185,7 @@ export async function handleProviderRoutes(
         accountId?: string;
         label?: string;
       }>(req);
-      if (body.provider === 'google') {
+      if (body.provider === 'google' || body.provider === 'openai') {
         await browserOAuthManager.startFlow(body.provider, {
           accountId: body.accountId,
           label: body.label,

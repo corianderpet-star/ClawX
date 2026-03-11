@@ -104,15 +104,15 @@ Communicate with AI agents through a modern chat experience. Support for multipl
 
 ### 🤖 Multi-Agent Management
 
-Create, configure, and switch between multiple AI agents—each with its own model, skills, and SOUL.md personality definition. Support sequential, parallel, and delegation collaboration modes for complex workflows.
+Create, configure, and switch between multiple AI agents—each with its own model, skills, and SOUL.md personality definition. Supports a **company-style hierarchy** with lead/sub roles, visualized as an interactive **org-chart**. Manage agent names and channel bindings through a dedicated **Agent Settings** dialog. Assign specific agents to channels and cron tasks for fine-grained control.
 
 ### 📡 Multi-Channel Management
 
-Configure and monitor multiple AI channels simultaneously. Each channel operates independently, allowing you to run specialized agents for different tasks.
+Configure and monitor multiple AI channels simultaneously. Run **multiple bot accounts** of the same channel type (e.g. two Telegram bots for different agents). Telegram group IDs are auto-detected and configured with per-group **@mention** permissions. Each channel operates independently with dedicated agent bindings.
 
 ### ⏰ Cron-Based Automation
 
-Schedule AI tasks to run automatically. Define triggers, set intervals, and let your AI agents work around the clock without manual intervention.
+Schedule AI tasks to run automatically. Define triggers, set intervals, and **assign specific agents** to each scheduled task. Let your AI agents work around the clock without manual intervention.
 
 ### 🧩 Extensible Skill System
 
@@ -120,7 +120,7 @@ Extend your AI agents with pre-built skills. Browse, install, and manage skills 
 
 ### 🔐 Secure Provider Integration
 
-Connect to multiple AI providers (OpenAI, Anthropic, and more) with credentials stored securely in your system's native keychain.
+Connect to multiple AI providers (OpenAI, Anthropic, Google, Moonshot, MiniMax, and more) with credentials stored securely in your system's native keychain. Supports **browser-based OAuth** for OpenAI alongside traditional API key authentication.
 
 ### 🌙 Adaptive Theming
 

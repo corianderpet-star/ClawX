@@ -3,7 +3,7 @@
  * Registers all IPC handlers for main-renderer communication
  */
 import { ipcMain, BrowserWindow, shell, dialog, app, nativeImage } from 'electron';
-import { existsSync, cpSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, extname, basename } from 'node:path';
 import crypto from 'node:crypto';
@@ -54,7 +54,8 @@ import { validateApiKeyWithProvider } from '../services/providers/provider-valid
 import { appUpdater } from './updater';
 import { PORTS } from '../utils/config';
 import { exportBackup, importBackup, getBackupSummary, type ImportOptions, DEFAULT_IMPORT_OPTIONS, type BackupManifest } from '../utils/migration';
-import { createAgent, deleteAgent, listAgentsFromConfig, readAgentSoul, writeAgentSoul, type CreateAgentInput } from '../utils/agent-config';
+import { ensureDingTalkPluginInstalled, ensureQQBotPluginInstalled } from '../utils/plugin-install';
+import { createAgent, deleteAgent, renameAgent, listAgentsFromConfig, readAgentSoul, writeAgentSoul, type CreateAgentInput } from '../utils/agent-config';
 
 type AppRequest = {
   id?: string;
@@ -738,6 +739,17 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
             }
             break;
           }
+          if (request.action === 'rename') {
+            const payload = request.payload as { agentId?: string; name?: string } | undefined;
+            if (!payload?.agentId || !payload?.name) throw new Error('Invalid agent.rename payload: agentId and name are required');
+            await renameAgent(payload.agentId, payload.name);
+            // Reload gateway config for the name change
+            if (gatewayManager.getStatus().state === 'running') {
+              gatewayManager.debouncedReload();
+            }
+            data = { success: true };
+            break;
+          }
           if (request.action === 'delete') {
             const payload = request.payload as { agentId?: string; removeFiles?: boolean } | string | undefined;
             const agentId = typeof payload === 'string' ? payload : payload?.agentId;
@@ -1411,106 +1423,6 @@ function registerGatewayHandlers(
  * For checking package status and channel configuration
  */
 function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
-  async function ensureDingTalkPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
-    const targetDir = join(homedir(), '.openclaw', 'extensions', 'dingtalk');
-    const targetManifest = join(targetDir, 'openclaw.plugin.json');
-
-    if (existsSync(targetManifest)) {
-      logger.info('DingTalk plugin already installed from local mirror');
-      return { installed: true };
-    }
-
-    const candidateSources = app.isPackaged
-      ? [
-        join(process.resourcesPath, 'openclaw-plugins', 'dingtalk'),
-        join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', 'dingtalk'),
-        join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', 'dingtalk')
-      ]
-      : [
-        join(app.getAppPath(), 'build', 'openclaw-plugins', 'dingtalk'),
-        join(process.cwd(), 'build', 'openclaw-plugins', 'dingtalk'),
-        join(__dirname, '../../build/openclaw-plugins/dingtalk'),
-      ];
-
-    const sourceDir = candidateSources.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
-    if (!sourceDir) {
-      logger.warn('Bundled DingTalk plugin mirror not found in candidate paths', { candidateSources });
-      return {
-        installed: false,
-        warning: `Bundled DingTalk plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
-      };
-    }
-
-    try {
-      mkdirSync(join(homedir(), '.openclaw', 'extensions'), { recursive: true });
-      rmSync(targetDir, { recursive: true, force: true });
-      cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
-
-      if (!existsSync(targetManifest)) {
-        return { installed: false, warning: 'Failed to install DingTalk plugin mirror (manifest missing).' };
-      }
-
-      logger.info(`Installed DingTalk plugin from bundled mirror: ${sourceDir}`);
-      return { installed: true };
-    } catch (error) {
-      logger.warn('Failed to install DingTalk plugin from bundled mirror:', error);
-      return {
-        installed: false,
-        warning: 'Failed to install bundled DingTalk plugin mirror',
-      };
-    }
-  }
-
-  async function ensureQQBotPluginInstalled(): Promise<{ installed: boolean; warning?: string }> {
-    const targetDir = join(homedir(), '.openclaw', 'extensions', 'qqbot');
-    const targetManifest = join(targetDir, 'openclaw.plugin.json');
-
-    if (existsSync(targetManifest)) {
-      logger.info('QQBot plugin already installed from local mirror');
-      return { installed: true };
-    }
-
-    const candidateSources = app.isPackaged
-      ? [
-        join(process.resourcesPath, 'openclaw-plugins', 'qqbot'),
-        join(process.resourcesPath, 'app.asar.unpacked', 'build', 'openclaw-plugins', 'qqbot'),
-        join(process.resourcesPath, 'app.asar.unpacked', 'openclaw-plugins', 'qqbot')
-      ]
-      : [
-        join(app.getAppPath(), 'build', 'openclaw-plugins', 'qqbot'),
-        join(process.cwd(), 'build', 'openclaw-plugins', 'qqbot'),
-        join(__dirname, '../../build/openclaw-plugins/qqbot'),
-      ];
-
-    const sourceDir = candidateSources.find((dir) => existsSync(join(dir, 'openclaw.plugin.json')));
-    if (!sourceDir) {
-      logger.warn('Bundled QQBot plugin mirror not found in candidate paths', { candidateSources });
-      return {
-        installed: false,
-        warning: `Bundled QQBot plugin mirror not found. Checked: ${candidateSources.join(' | ')}`,
-      };
-    }
-
-    try {
-      mkdirSync(join(homedir(), '.openclaw', 'extensions'), { recursive: true });
-      rmSync(targetDir, { recursive: true, force: true });
-      cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
-
-      if (!existsSync(targetManifest)) {
-        return { installed: false, warning: 'Failed to install QQBot plugin mirror (manifest missing).' };
-      }
-
-      logger.info(`Installed QQBot plugin from bundled mirror: ${sourceDir}`);
-      return { installed: true };
-    } catch (error) {
-      logger.warn('Failed to install QQBot plugin from bundled mirror:', error);
-      return {
-        installed: false,
-        warning: 'Failed to install bundled QQBot plugin mirror',
-      };
-    }
-  }
-
   // Get OpenClaw package status
   ipcMain.handle('openclaw:status', () => {
     const status = getOpenClawStatus();

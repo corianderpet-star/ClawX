@@ -54,6 +54,15 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
   fetchChannels: async () => {
     set({ loading: true, error: null });
     try {
+      // Fetch locally-configured channel types as a fallback source of truth
+      let localConfiguredTypes: string[] = [];
+      try {
+        const localResult = await hostApiFetch<{ success: boolean; channels?: string[] }>('/api/channels/configured');
+        if (localResult.success && Array.isArray(localResult.channels)) {
+          localConfiguredTypes = localResult.channels;
+        }
+      } catch { /* ignore */ }
+
       const data = await useGatewayStore.getState().rpc<{
           channelOrder?: string[];
           channels?: Record<string, unknown>;
@@ -78,15 +87,37 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
         const channelOrder = data.channelOrder || Object.keys(data.channels || {});
         for (const channelId of channelOrder) {
           const summary = (data.channels as Record<string, unknown> | undefined)?.[channelId] as Record<string, unknown> | undefined;
-          const configured =
+          const summaryConfigured =
             typeof summary?.configured === 'boolean'
               ? summary.configured
               : typeof (summary as { running?: boolean })?.running === 'boolean'
                 ? true
                 : false;
-          if (!configured) continue;
 
+          // Also check per-account data: if ANY account reports configured=true,
+          // the channel is configured even when the top-level summary says otherwise.
+          // Gateway returns account snapshots for ALL registered channels (even
+          // unconfigured ones get a default account with configured=false), so we
+          // must check the actual `configured` flag — not just array length.
+          // As a final fallback, also trust the local config file which directly
+          // reads openclaw.json (avoids Gateway snapshot timing issues).
           const accounts = data.channelAccounts?.[channelId] || [];
+          const anyAccountConfigured = accounts.some(
+            (a: { configured?: boolean }) => a.configured === true,
+          );
+          const locallyConfigured = localConfiguredTypes.includes(channelId);
+          if (!summaryConfigured && !anyAccountConfigured && !locallyConfigured) continue;
+
+          // Filter accounts: only show configured accounts (skip phantom default entries)
+          const configuredAccounts = accounts.filter(
+            (a: { configured?: boolean; accountId?: string }) =>
+              a.configured === true ||
+              // Keep default account if the channel-level summary says configured
+              (a.accountId === 'default' && summaryConfigured) ||
+              // Keep all accounts if locally configured but Gateway reports nothing
+              locallyConfigured,
+          );
+
           const summaryError =
             typeof (summary as { error?: string })?.error === 'string'
               ? (summary as { error?: string }).error
@@ -95,8 +126,8 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
                 : undefined;
 
           // Show each account as a separate card
-          if (accounts.length > 0) {
-            for (const account of accounts) {
+          if (configuredAccounts.length > 0) {
+            for (const account of configuredAccounts) {
               const now = Date.now();
               const RECENT_MS = 10 * 60 * 1000;
               const hasRecentActivity =
@@ -196,6 +227,13 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
     const channelType = dashIdx >= 0 ? channelId.slice(0, dashIdx) : channelId;
     const accountId = dashIdx >= 0 ? channelId.slice(dashIdx + 1) : undefined;
 
+    // Check how many accounts of this channel type remain BEFORE deletion
+    const currentChannels = get().channels;
+    const remainingOfType = currentChannels.filter(
+      (c) => c.type === channelType && c.id !== channelId,
+    );
+    const isLastAccount = remainingOfType.length === 0;
+
     try {
       // Delete the channel configuration from openclaw.json
       const deleteUrl = `/api/channels/config/${encodeURIComponent(channelType)}` +
@@ -207,11 +245,15 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
       console.error('Failed to delete channel config:', error);
     }
 
-    try {
-      await useGatewayStore.getState().rpc('channels.delete', { channelId: channelType });
-    } catch (error) {
-      // Continue with local deletion even if gateway fails
-      console.error('Failed to delete channel from gateway:', error);
+    // Only tell Gateway to fully remove the channel if this is the last account.
+    // For single-account deletion the HTTP DELETE route already triggers
+    // debouncedReload so the Gateway picks up the config change.
+    if (isLastAccount) {
+      try {
+        await useGatewayStore.getState().rpc('channels.delete', { channelId: channelType });
+      } catch (error) {
+        console.error('Failed to delete channel from gateway:', error);
+      }
     }
 
     // Remove from local state

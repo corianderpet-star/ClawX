@@ -22,6 +22,7 @@ import { isQuitting, setQuitting } from './app-state';
 import { applyProxySettings } from './proxy';
 import { getSetting } from '../utils/store';
 import { ensureBuiltinSkillsInstalled } from '../utils/skill-config';
+import { ensureAllBundledPluginsInstalled } from '../utils/plugin-install';
 import { startHostApiServer } from '../api/server';
 import { HostEventBus } from '../api/event-bus';
 import { deviceOAuthManager } from '../utils/device-oauth';
@@ -249,6 +250,12 @@ async function initialize(): Promise<void> {
   // to ~/.openclaw/skills/ so they are immediately available without manual install.
   void ensureBuiltinSkillsInstalled().catch((error) => {
     logger.warn('Failed to install built-in skills:', error);
+  });
+
+  // Pre-install bundled channel plugins (qqbot, dingtalk) to ~/.openclaw/extensions/
+  // so they are ready when the gateway starts, without waiting for user configuration.
+  void ensureAllBundledPluginsInstalled().catch((error) => {
+    logger.warn('Failed to pre-install bundled plugins:', error);
   });
 
   // Bridge gateway and host-side events before any auto-start logic runs, so

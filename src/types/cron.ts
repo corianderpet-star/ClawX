@@ -47,6 +47,8 @@ export interface CronJob {
   updatedAt: string;
   lastRun?: CronJobLastRun;
   nextRun?: string;
+  /** Agent ID assigned to execute this cron job */
+  agentId?: string;
 }
 
 /**
@@ -59,6 +61,8 @@ export interface CronJobCreateInput {
   message: string;
   schedule: string;
   enabled?: boolean;
+  /** Agent ID to execute this cron job – defaults to 'main' if omitted */
+  agentId?: string;
 }
 
 /**
@@ -69,6 +73,8 @@ export interface CronJobUpdateInput {
   message?: string;
   schedule?: string;
   enabled?: boolean;
+  /** Agent ID to execute this cron job */
+  agentId?: string;
 }
 
 /**

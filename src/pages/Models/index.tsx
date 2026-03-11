@@ -34,6 +34,7 @@ export function Models() {
   const isGatewayRunning = gatewayStatus.state === 'running';
 
   const [usageHistory, setUsageHistory] = useState<UsageHistoryEntry[]>([]);
+  const [usageLoaded, setUsageLoaded] = useState(false);
   const [usageGroupBy, setUsageGroupBy] = useState<UsageGroupBy>('model');
   const [usageWindow, setUsageWindow] = useState<UsageWindow>('7d');
   const [usagePage, setUsagePage] = useState(1);
@@ -44,14 +45,20 @@ export function Models() {
 
   useEffect(() => {
     if (isGatewayRunning) {
-      hostApiFetch<UsageHistoryEntry[]>('/api/usage/recent-token-history')
+      setUsageLoaded(false);
+      hostApiFetch<UsageHistoryEntry[]>('/api/usage/recent-token-history?limit=500')
         .then((entries) => {
           setUsageHistory(Array.isArray(entries) ? entries : []);
           setUsagePage(1);
         })
         .catch(() => {
           setUsageHistory([]);
+        })
+        .finally(() => {
+          setUsageLoaded(true);
         });
+    } else {
+      setUsageLoaded(false);
     }
   }, [isGatewayRunning]);
 
@@ -62,7 +69,7 @@ export function Models() {
   const usageTotalPages = Math.max(1, Math.ceil(filteredUsageHistory.length / usagePageSize));
   const safeUsagePage = Math.min(usagePage, usageTotalPages);
   const pagedUsageHistory = filteredUsageHistory.slice((safeUsagePage - 1) * usagePageSize, safeUsagePage * usagePageSize);
-  const usageLoading = isGatewayRunning && visibleUsageHistory.length === 0;
+  const usageLoading = isGatewayRunning && !usageLoaded;
 
   return (
     <div className="flex flex-col -m-6 dark:bg-background h-[calc(100vh-2.5rem)] overflow-hidden">
