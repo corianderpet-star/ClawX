@@ -13,7 +13,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 
-const DEFAULT_ISSUER = 'https://chatgpt.com';
+const DEFAULT_ISSUER = 'https://auth.openai.com';
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const SCOPES = 'openid profile email offline_access api.connectors.read api.connectors.invoke';
 const CALLBACK_HOST = '127.0.0.1';
