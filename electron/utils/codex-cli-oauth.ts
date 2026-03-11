@@ -71,9 +71,10 @@ function buildAuthorizeUrl(
     scope: SCOPES,
     code_challenge: pkce.challenge,
     code_challenge_method: 'S256',
-    state,
-    codex_cli_simplified_flow: 'true',
     id_token_add_organizations: 'true',
+    codex_cli_simplified_flow: 'true',
+    state,
+    originator: 'codex_cli_rs',
   });
   return `${DEFAULT_ISSUER}/oauth/authorize?${params.toString()}`;
 }
