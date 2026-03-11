@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger';
 const GOOGLE_OAUTH_RUNTIME_PROVIDER = 'google-gemini-cli';
 const GOOGLE_OAUTH_DEFAULT_MODEL_REF = `${GOOGLE_OAUTH_RUNTIME_PROVIDER}/gemini-3-pro-preview`;
 const OPENAI_CODEX_RUNTIME_PROVIDER = 'openai-codex';
-const OPENAI_CODEX_DEFAULT_MODEL_REF = `${OPENAI_CODEX_RUNTIME_PROVIDER}/gpt-5.2-codex`;
+const OPENAI_CODEX_DEFAULT_MODEL_REF = `${OPENAI_CODEX_RUNTIME_PROVIDER}/gpt-5.4-codex`;
 
 type RuntimeProviderSyncContext = {
   runtimeProviderKey: string;

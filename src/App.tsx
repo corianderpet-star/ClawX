@@ -1,28 +1,30 @@
-/**
+﻿/**
  * Root Application Component
  * Handles routing and global providers
  */
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Component, useEffect } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
-import i18n from './i18n';
-import { MainLayout } from './components/layout/MainLayout';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Dashboard } from './pages/Dashboard';
-import { Models } from './pages/Models';
-import { Chat } from './pages/Chat';
-import { Channels } from './pages/Channels';
-import { Skills } from './pages/Skills';
-import { Cron } from './pages/Cron';
-import { Settings } from './pages/Settings';
-import { Agents } from './pages/Agents';
-import { Setup } from './pages/Setup';
-import { useSettingsStore } from './stores/settings';
-import { useGatewayStore } from './stores/gateway';
+import { MainLayout } from './components/layout/MainLayout';
+import i18n from './i18n';
 import { applyGatewayTransportPreference } from './lib/api-client';
 import { applyThemeColor } from './lib/theme-colors';
+import { Agents } from './pages/Agents';
+import { Channels } from './pages/Channels';
+import { Chat } from './pages/Chat';
+import { Cron } from './pages/Cron';
+import { Dashboard } from './pages/Dashboard';
+import { Landing } from './pages/Landing';
+import { Models } from './pages/Models';
+import { Settings } from './pages/Settings';
+import { Setup } from './pages/Setup';
+import { Skills } from './pages/Skills';
+import { useGatewayStore } from './stores/gateway';
+import { useSettingsStore } from './stores/settings';
 
+const PUBLIC_ROUTES = ['/landing'];
 
 /**
  * Error Boundary to catch and display React rendering errors
@@ -47,28 +49,35 @@ class ErrorBoundary extends Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          padding: '40px',
-          color: '#f87171',
-          background: '#0f172a',
-          minHeight: '100vh',
-          fontFamily: 'monospace'
-        }}>
+        <div
+          style={{
+            padding: '40px',
+            color: '#f87171',
+            background: '#0f172a',
+            minHeight: '100vh',
+            fontFamily: 'monospace',
+          }}
+        >
           <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>Something went wrong</h1>
-          <pre style={{
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            background: '#1e293b',
-            padding: '16px',
-            borderRadius: '8px',
-            fontSize: '14px'
-          }}>
+          <pre
+            style={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all',
+              background: '#1e293b',
+              padding: '16px',
+              borderRadius: '8px',
+              fontSize: '14px',
+            }}
+          >
             {this.state.error?.message}
             {'\n\n'}
             {this.state.error?.stack}
           </pre>
           <button
-            onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
             style={{
               marginTop: '16px',
               padding: '8px 16px',
@@ -76,7 +85,7 @@ class ErrorBoundary extends Component<
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer'
+              cursor: 'pointer',
             }}
           >
             Reload
@@ -102,26 +111,26 @@ function App() {
     initSettings();
   }, [initSettings]);
 
-  // Sync i18n language with persisted settings on mount
   useEffect(() => {
     if (language && language !== i18n.language) {
       i18n.changeLanguage(language);
     }
   }, [language]);
 
-  // Initialize Gateway connection on mount
   useEffect(() => {
     initGateway();
   }, [initGateway]);
 
-  // Redirect to setup wizard if not complete
   useEffect(() => {
-    if (!setupComplete && !location.pathname.startsWith('/setup')) {
+    const isPublicRoute = PUBLIC_ROUTES.some(
+      (route) => location.pathname === route || location.pathname.startsWith(`${route}/`),
+    );
+
+    if (!setupComplete && !location.pathname.startsWith('/setup') && !isPublicRoute) {
       navigate('/setup');
     }
   }, [setupComplete, location.pathname, navigate]);
 
-  // Listen for navigation events from main process
   useEffect(() => {
     const handleNavigate = (...args: unknown[]) => {
       const path = args[0];
@@ -139,15 +148,12 @@ function App() {
     };
   }, [navigate]);
 
-  // Apply theme class + custom color
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
 
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       root.classList.add(systemTheme);
     } else {
       root.classList.add(theme);
@@ -155,7 +161,6 @@ function App() {
 
     applyThemeColor(themeColor, theme);
 
-    // Listen for system theme changes when in 'system' mode
     if (theme === 'system') {
       const mql = window.matchMedia('(prefers-color-scheme: dark)');
       const handler = () => applyThemeColor(themeColor, theme);
@@ -172,10 +177,9 @@ function App() {
     <ErrorBoundary>
       <TooltipProvider delayDuration={300}>
         <Routes>
-          {/* Setup wizard (shown on first launch) */}
+          <Route path="/landing" element={<Landing />} />
           <Route path="/setup/*" element={<Setup />} />
 
-          {/* Main application routes */}
           <Route element={<MainLayout />}>
             <Route path="/" element={<Chat />} />
             <Route path="/models" element={<Models />} />
@@ -188,13 +192,7 @@ function App() {
           </Route>
         </Routes>
 
-        {/* Global toast notifications */}
-        <Toaster
-          position="bottom-right"
-          richColors
-          closeButton
-          style={{ zIndex: 99999 }}
-        />
+        <Toaster position="bottom-right" richColors closeButton style={{ zIndex: 99999 }} />
       </TooltipProvider>
     </ErrorBoundary>
   );

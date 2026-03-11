@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Skills Page
  * Browse and manage AI skills
  */
@@ -7,7 +7,6 @@ import {
   Search,
   Puzzle,
   Lock,
-  Package,
   X,
   AlertCircle,
   Plus,
@@ -166,7 +165,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall }: Sk
         <div className="flex-1 overflow-y-auto px-8 py-10">
           <div className="flex flex-col items-center mb-8">
             <div className="w-16 h-16 flex items-center justify-center rounded-full bg-white dark:bg-[#2c2c2a] border border-black/5 dark:border-white/5 shrink-0 mb-4 relative shadow-sm">
-               <span className="text-3xl">{skill.icon || '🔧'}</span>
+               <span className="text-3xl">{skill.icon || '馃敡'}</span>
                {skill.isCore && (
                  <div className="absolute -bottom-1 -right-1 bg-[#f3f1e9] dark:bg-[#1a1a19] rounded-full p-1 shadow-sm border border-black/5 dark:border-white/5">
                    <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
@@ -726,7 +725,7 @@ export function Skills() {
                 >
                   <div className="flex items-start gap-4 flex-1 overflow-hidden pr-4">
                     <div className="h-10 w-10 shrink-0 flex items-center justify-center text-2xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-xl overflow-hidden">
-                      {skill.icon || '🧩'}
+                      {skill.icon || '馃З'}
                     </div>
                     <div className="flex flex-col overflow-hidden">
                       <div className="flex items-center gap-2 mb-1">
@@ -799,13 +798,13 @@ export function Skills() {
                       >
                         <div className="flex items-start gap-4 flex-1 overflow-hidden pr-4">
                           <div className="h-10 w-10 shrink-0 flex items-center justify-center text-xl bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/10 rounded-xl overflow-hidden">
-                            📦
+                            馃摝
                           </div>
                           <div className="flex flex-col overflow-hidden">
                             <div className="flex items-center gap-2 mb-1">
                               <h3 className="text-[15px] font-semibold text-foreground truncate">{skill.name}</h3>
                               {skill.author && (
-                                <span className="text-xs text-muted-foreground">• {skill.author}</span>
+                                <span className="text-xs text-muted-foreground">鈥?{skill.author}</span>
                               )}
                             </div>
                             <p className="text-[13.5px] text-muted-foreground line-clamp-1 pr-6 leading-relaxed">
@@ -875,3 +874,4 @@ export function Skills() {
 }
 
 export default Skills;
+
