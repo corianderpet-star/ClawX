@@ -17,6 +17,7 @@ const DEFAULT_ISSUER = 'https://auth.openai.com';
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const SCOPES = 'openid profile email offline_access api.connectors.read api.connectors.invoke';
 const CALLBACK_HOST = '127.0.0.1';
+const DEFAULT_PORT = 1455;
 
 export type CodexCliOAuthCredentials = {
   /** Access token (JWT) — used directly by OpenClaw runtime as Bearer token */
@@ -64,19 +65,24 @@ function buildAuthorizeUrl(
   pkce: { verifier: string; challenge: string },
   state: string,
 ): string {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: CLIENT_ID,
-    redirect_uri: redirectUri,
-    scope: SCOPES,
-    code_challenge: pkce.challenge,
-    code_challenge_method: 'S256',
-    id_token_add_organizations: 'true',
-    codex_cli_simplified_flow: 'true',
-    state,
-    originator: 'codex_cli_rs',
-  });
-  return `${DEFAULT_ISSUER}/oauth/authorize?${params.toString()}`;
+  // Must use encodeURIComponent (produces %20 for spaces) instead of
+  // URLSearchParams (produces + for spaces). OpenAI's auth server strictly
+  // follows RFC 3986 and treats + as literal, causing
+  // "CodexClientError: json deserialization error" if spaces are encoded as +.
+  const pairs: [string, string][] = [
+    ['response_type', 'code'],
+    ['client_id', CLIENT_ID],
+    ['redirect_uri', redirectUri],
+    ['scope', SCOPES],
+    ['code_challenge', pkce.challenge],
+    ['code_challenge_method', 'S256'],
+    ['id_token_add_organizations', 'true'],
+    ['codex_cli_simplified_flow', 'true'],
+    ['state', state],
+    ['originator', 'codex_cli_rs'],
+  ];
+  const qs = pairs.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  return `${DEFAULT_ISSUER}/oauth/authorize?${qs}`;
 }
 
 // ── Token exchange ──────────────────────────────────────────────
@@ -158,9 +164,15 @@ export async function loginCodexCliOAuth(
 
   const server = createServer();
   
+  // Try Codex CLI default port first, fall back to random port
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, CALLBACK_HOST, () => resolve());
+    server.once('error', () => {
+      // Port 1455 occupied, try random port
+      server.removeAllListeners('error');
+      server.once('error', reject);
+      server.listen(0, CALLBACK_HOST, () => resolve());
+    });
+    server.listen(DEFAULT_PORT, CALLBACK_HOST, () => resolve());
   });
 
   const addr = server.address();
