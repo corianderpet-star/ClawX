@@ -351,8 +351,14 @@ exports.default = async function afterPack(context) {
     const { writeFileSync: writeFs } = require('fs');
     const markerPath = join(appOutDir, '.portable');
     if (!existsSync(markerPath)) {
-      writeFs(markerPath, 'ClawPlus portable mode marker\nCreated by afterPack (PORTABLE_BUILD=1)\n', 'utf-8');
-      console.log('[after-pack] 🔌 Portable marker (.portable) injected.');
+      // First line is the install type tag — 'nsis' so the updater knows it
+      // can use the standard electron-updater NSIS flow (same .exe on CDN).
+      writeFs(
+        markerPath,
+        'nsis\nClawPlus portable mode marker\nCreated by afterPack (PORTABLE_BUILD=1)\n',
+        'utf-8'
+      );
+      console.log('[after-pack] 🔌 Portable marker (.portable) injected with type=nsis.');
     }
   }
 

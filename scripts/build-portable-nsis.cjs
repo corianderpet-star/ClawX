@@ -11,7 +11,9 @@ const { execSync } = require('child_process');
 process.env.PORTABLE_BUILD = '1';
 
 console.log('[build-portable-nsis] Building NSIS installer in portable mode...');
-console.log('[build-portable-nsis] PORTABLE_BUILD=1 is set — afterPack will inject .portable marker\n');
+console.log(
+  '[build-portable-nsis] PORTABLE_BUILD=1 is set — afterPack will inject .portable marker\n'
+);
 
 try {
   execSync('pnpm run package:win', {

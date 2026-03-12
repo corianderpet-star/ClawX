@@ -28,9 +28,21 @@
  */
 
 import { app } from 'electron';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { logger } from './logger';
+
+/**
+ * How the portable edition was created.
+ *
+ * - `'dir'`  — directory build (`package:portable`), no NSIS uninstaller or
+ *              registry entries.  Updates must use the `.zip` download path.
+ * - `'nsis'` — NSIS installer with PORTABLE_BUILD=1 (`package:portable:nsis`).
+ *              The installation has registry entries and an uninstaller, so the
+ *              standard `electron-updater` NSIS update flow works as-is.
+ * - `null`   — not in portable mode, or the `.portable` marker has no type tag.
+ */
+export type PortableInstallType = 'dir' | 'nsis' | null;
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -87,6 +99,42 @@ export function isPortableMode(): boolean {
 
   _isPortable = false;
   return false;
+}
+
+/** Cached install type. */
+let _installType: PortableInstallType | undefined;
+
+/**
+ * Determine how the portable installation was created.
+ *
+ * Reads the first line of the `.portable` marker file.  The build scripts
+ * write either `dir` or `nsis` as the first line; the rest is a human
+ * comment.  Returns `null` if not in portable mode or if the file does not
+ * contain a recognised tag (for backward compatibility).
+ */
+export function getPortableInstallType(): PortableInstallType {
+  if (_installType !== undefined) return _installType;
+  if (!isPortableMode() || !_portableRoot) {
+    _installType = null;
+    return null;
+  }
+
+  for (const m of ['.portable', 'portable.dat']) {
+    const markerPath = join(_portableRoot, m);
+    if (existsSync(markerPath)) {
+      try {
+        const firstLine = readFileSync(markerPath, 'utf-8').split(/\r?\n/)[0].trim().toLowerCase();
+        if (firstLine === 'dir' || firstLine === 'nsis') {
+          _installType = firstLine;
+          return _installType;
+        }
+      } catch { /* ignore read errors */ }
+    }
+  }
+
+  // Fallback: older .portable files without a type tag → treat as 'dir'
+  _installType = 'dir';
+  return _installType;
 }
 
 // ---------------------------------------------------------------------------

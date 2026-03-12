@@ -11,7 +11,7 @@ import { BrowserWindow, app, ipcMain } from 'electron';
 import { logger } from '../utils/logger';
 import { EventEmitter } from 'events';
 import { setQuitting } from './app-state';
-import { isPortableMode } from '../utils/portable';
+import { isPortableMode, getPortableInstallType } from '../utils/portable';
 import {
   downloadPortableUpdate,
   applyPortableUpdate,
@@ -55,6 +55,18 @@ export class AppUpdater extends EventEmitter {
   private autoInstallCountdown = 0;
   /** Tracks auto-download preference for both standard and portable modes. */
   private _autoDownloadEnabled = false;
+
+  /**
+   * `true` when the app is a dir-portable installation (no NSIS uninstaller).
+   * In that case we download the `.zip` artifact and apply it ourselves.
+   *
+   * For nsis-portable installations the standard electron-updater flow works
+   * because the NSIS installer on the server detects the existing `.portable`
+   * marker and handles everything correctly.
+   */
+  private get usePortableZipFlow(): boolean {
+    return isPortableMode() && getPortableInstallType() !== 'nsis';
+  }
 
   /** Delay (in seconds) before auto-installing a downloaded update. */
   private static readonly AUTO_INSTALL_DELAY_SECONDS = 5;
@@ -125,9 +137,10 @@ export class AppUpdater extends EventEmitter {
       this.updateStatus({ status: 'available', info });
       this.emit('update-available', info);
 
-      // In portable mode, autoUpdater.autoDownload is always false.
-      // Handle auto-download ourselves so we fetch the zip, not the NSIS exe.
-      if (isPortableMode() && this._autoDownloadEnabled && info.version) {
+      // In dir-portable mode, autoUpdater.autoDownload is always false
+      // (we must not let it download the NSIS exe). Trigger our own zip download.
+      // For nsis-portable, the standard electron-updater flow handles everything.
+      if (this.usePortableZipFlow && this._autoDownloadEnabled && info.version) {
         this.downloadUpdate().catch((err) => {
           logger.error('[Updater] Portable auto-download failed:', err);
         });
@@ -220,11 +233,12 @@ export class AppUpdater extends EventEmitter {
   /**
    * Download available update.
    *
-   * In portable mode, downloads the `.zip` artifact and extracts it locally
-   * instead of downloading the NSIS `.exe` installer.
+   * - dir-portable  → downloads the `.zip` artifact and extracts it locally.
+   * - nsis-portable → standard flow (downloads the same NSIS exe from CDN).
+   * - standard      → standard flow.
    */
   async downloadUpdate(): Promise<void> {
-    if (isPortableMode()) {
+    if (this.usePortableZipFlow) {
       return this.downloadPortableZip();
     }
     try {
@@ -288,11 +302,12 @@ export class AppUpdater extends EventEmitter {
    */
   quitAndInstall(): void {
     logger.info('[Updater] quitAndInstall called');
-    if (isPortableMode()) {
-      logger.info('[Updater] Portable mode — applying zip update and restarting');
+    if (this.usePortableZipFlow) {
+      logger.info('[Updater] Dir-portable mode — applying zip update and restarting');
       applyPortableUpdate();
       return;
     }
+    // nsis-portable and standard installs both use the native NSIS installer.
     setQuitting();
     autoUpdater.quitAndInstall();
   }
@@ -339,13 +354,14 @@ export class AppUpdater extends EventEmitter {
   /**
    * Set auto-download preference.
    *
-   * In portable mode, we never set `autoUpdater.autoDownload = true` because
-   * that would trigger the NSIS `.exe` download.  Instead we store the flag
-   * and trigger our own portable zip download in the `update-available` handler.
+   * In dir-portable mode we never set `autoUpdater.autoDownload = true`
+   * because that would trigger the NSIS `.exe` download.  Instead we store
+   * the flag and trigger our own zip download in the `update-available`
+   * handler.  For nsis-portable the standard flow is safe.
    */
   setAutoDownload(enable: boolean): void {
     this._autoDownloadEnabled = enable;
-    if (!isPortableMode()) {
+    if (!this.usePortableZipFlow) {
       autoUpdater.autoDownload = enable;
     }
   }

@@ -36,9 +36,13 @@ if (outDirs.length === 0) {
 for (const outDir of outDirs) {
   console.log(`[portable-post-build] Finalizing portable edition in: ${outDir}`);
 
-  // 1. .portable marker
+  // 1. .portable marker — first line is the install type tag ('dir' or 'nsis')
   const markerPath = join(outDir, '.portable');
-  writeFileSync(markerPath, 'ClawPlus portable mode marker\nCreated by build script.\n', 'utf-8');
+  writeFileSync(
+    markerPath,
+    'dir\nClawPlus portable mode marker\nCreated by portable-post-build.\n',
+    'utf-8'
+  );
   console.log('  ✓ .portable marker created');
 
   // 2. Pre-create LocalData directories
