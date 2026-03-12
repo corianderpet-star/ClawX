@@ -344,6 +344,18 @@ exports.default = async function afterPack(context) {
 
   console.log(`[after-pack] Target: ${platform}/${arch}`);
 
+  // ── Portable build: inject .portable marker into the packed directory ──
+  // When PORTABLE_BUILD=1 is set, add the .portable marker file so that the
+  // resulting NSIS installer / zip / dir output starts in portable mode.
+  if (process.env.PORTABLE_BUILD === '1' && platform === 'win32') {
+    const { writeFileSync: writeFs } = require('fs');
+    const markerPath = join(appOutDir, '.portable');
+    if (!existsSync(markerPath)) {
+      writeFs(markerPath, 'ClawPlus portable mode marker\nCreated by afterPack (PORTABLE_BUILD=1)\n', 'utf-8');
+      console.log('[after-pack] 🔌 Portable marker (.portable) injected.');
+    }
+  }
+
   const src = join(__dirname, '..', 'build', 'openclaw', 'node_modules');
 
   let resourcesDir;

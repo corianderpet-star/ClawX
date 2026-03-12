@@ -11,6 +11,13 @@ import { BrowserWindow, app, ipcMain } from 'electron';
 import { logger } from '../utils/logger';
 import { EventEmitter } from 'events';
 import { setQuitting } from './app-state';
+import { isPortableMode } from '../utils/portable';
+import {
+  downloadPortableUpdate,
+  applyPortableUpdate,
+  cleanupStaging,
+  type PortableProgress,
+} from '../utils/portable-updater';
 
 /** Base CDN URL (without trailing channel path) */
 const OSS_BASE_URL = 'http://zgonline.top';
@@ -46,6 +53,8 @@ export class AppUpdater extends EventEmitter {
   private status: UpdateStatus = { status: 'idle' };
   private autoInstallTimer: NodeJS.Timeout | null = null;
   private autoInstallCountdown = 0;
+  /** Tracks auto-download preference for both standard and portable modes. */
+  private _autoDownloadEnabled = false;
 
   /** Delay (in seconds) before auto-installing a downloaded update. */
   private static readonly AUTO_INSTALL_DELAY_SECONDS = 5;
@@ -82,6 +91,11 @@ export class AppUpdater extends EventEmitter {
     });
 
     this.setupListeners();
+
+    // Clean stale update-staging from a previous interrupted portable update.
+    if (isPortableMode()) {
+      cleanupStaging();
+    }
   }
 
   /**
@@ -110,6 +124,14 @@ export class AppUpdater extends EventEmitter {
     autoUpdater.on('update-available', (info: UpdateInfo) => {
       this.updateStatus({ status: 'available', info });
       this.emit('update-available', info);
+
+      // In portable mode, autoUpdater.autoDownload is always false.
+      // Handle auto-download ourselves so we fetch the zip, not the NSIS exe.
+      if (isPortableMode() && this._autoDownloadEnabled && info.version) {
+        this.downloadUpdate().catch((err) => {
+          logger.error('[Updater] Portable auto-download failed:', err);
+        });
+      }
     });
 
     autoUpdater.on('update-not-available', (info: UpdateInfo) => {
@@ -126,7 +148,7 @@ export class AppUpdater extends EventEmitter {
       this.updateStatus({ status: 'downloaded', info: event });
       this.emit('update-downloaded', event);
 
-      if (autoUpdater.autoDownload) {
+      if (this._autoDownloadEnabled) {
         this.startAutoInstallCountdown();
       }
     });
@@ -196,13 +218,59 @@ export class AppUpdater extends EventEmitter {
   }
 
   /**
-   * Download available update
+   * Download available update.
+   *
+   * In portable mode, downloads the `.zip` artifact and extracts it locally
+   * instead of downloading the NSIS `.exe` installer.
    */
   async downloadUpdate(): Promise<void> {
+    if (isPortableMode()) {
+      return this.downloadPortableZip();
+    }
     try {
       await autoUpdater.downloadUpdate();
     } catch (error) {
       logger.error('[Updater] Download update failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download the portable zip, extract it, and emit standard updater events
+   * so the renderer UI stays identical.
+   */
+  private async downloadPortableZip(): Promise<void> {
+    const version = this.status.info?.version;
+    if (!version) {
+      throw new Error('No update version info available. Check for updates first.');
+    }
+
+    logger.info(`[Updater] Downloading portable update v${version}`);
+
+    try {
+      await downloadPortableUpdate(version, (progress: PortableProgress) => {
+        // Map portable progress to electron-updater ProgressInfo shape
+        const mapped: ProgressInfo = {
+          percent: progress.percent,
+          bytesPerSecond: progress.bytesPerSecond,
+          transferred: progress.transferred,
+          total: progress.total,
+          delta: 0,
+        };
+        this.updateStatus({ status: 'downloading', progress: mapped });
+        this.emit('download-progress', mapped);
+      });
+
+      // Signal download complete with the same event shape
+      this.updateStatus({ status: 'downloaded', info: this.status.info });
+      this.emit('update-downloaded', this.status.info);
+
+      if (this._autoDownloadEnabled) {
+        this.startAutoInstallCountdown();
+      }
+    } catch (error) {
+      logger.error('[Updater] Portable download failed:', error);
+      this.updateStatus({ status: 'error', error: (error as Error).message || String(error) });
       throw error;
     }
   }
@@ -220,6 +288,11 @@ export class AppUpdater extends EventEmitter {
    */
   quitAndInstall(): void {
     logger.info('[Updater] quitAndInstall called');
+    if (isPortableMode()) {
+      logger.info('[Updater] Portable mode — applying zip update and restarting');
+      applyPortableUpdate();
+      return;
+    }
     setQuitting();
     autoUpdater.quitAndInstall();
   }
@@ -264,10 +337,17 @@ export class AppUpdater extends EventEmitter {
   }
 
   /**
-   * Set auto-download preference
+   * Set auto-download preference.
+   *
+   * In portable mode, we never set `autoUpdater.autoDownload = true` because
+   * that would trigger the NSIS `.exe` download.  Instead we store the flag
+   * and trigger our own portable zip download in the `update-available` handler.
    */
   setAutoDownload(enable: boolean): void {
-    autoUpdater.autoDownload = enable;
+    this._autoDownloadEnabled = enable;
+    if (!isPortableMode()) {
+      autoUpdater.autoDownload = enable;
+    }
   }
 
   /**

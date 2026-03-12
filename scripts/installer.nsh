@@ -73,6 +73,23 @@
 !macroend
 
 !macro customInstall
+  ; ── Portable mode detection ──────────────────────────────────────────────
+  ; If the .portable marker file exists in $INSTDIR, this is a portable
+  ; installation (USB drive, cloud-synced folder, etc.).  Skip system-wide
+  ; changes (long paths, PATH) and instead create the LocalData/ structure.
+  IfFileExists "$INSTDIR\.portable" _ci_portable _ci_standard
+
+  _ci_portable:
+    DetailPrint "Portable mode detected — creating LocalData structure..."
+    CreateDirectory "$INSTDIR\LocalData\electron-userData"
+    CreateDirectory "$INSTDIR\LocalData\.openclaw"
+    CreateDirectory "$INSTDIR\LocalData\.clawx"
+    CreateDirectory "$INSTDIR\LocalData\logs"
+    CreateDirectory "$INSTDIR\LocalData\secrets"
+    DetailPrint "Portable mode setup complete."
+    Goto _ci_done
+
+  _ci_standard:
   ; Enable Windows long path support (Windows 10 1607+ / Windows 11).
   ; pnpm virtual store paths can exceed the default MAX_PATH limit of 260 chars.
   ; Writing to HKLM requires admin privileges; on per-user installs without
@@ -99,6 +116,24 @@
 !macroend
 
 !macro customUnInstall
+  ; ── Portable mode: simplified uninstall (skip system PATH removal) ──────
+  IfFileExists "$INSTDIR\.portable" _cu_portableUninstall _cu_standardUninstall
+
+  _cu_portableUninstall:
+    ; Portable installs don't modify system PATH, so nothing to revert.
+    ; Ask if user wants to remove LocalData (the only user data in portable mode).
+    MessageBox MB_YESNO|MB_ICONQUESTION \
+      "Do you want to remove all portable user data?$\r$\n$\r$\nThis will delete the LocalData folder containing:$\r$\n  • Configuration & skills$\r$\n  • Logs and secrets$\r$\n$\r$\nSelect 'No' to keep your data." \
+      /SD IDNO IDYES _cu_removePortableData IDNO _cu_skipRemove
+
+    _cu_removePortableData:
+      RMDir /r "$INSTDIR\LocalData"
+      Delete "$INSTDIR\.portable"
+      Delete "$INSTDIR\README-portable.txt"
+      DetailPrint "Portable user data removed."
+      Goto _cu_skipRemove
+
+  _cu_standardUninstall:
   ; Remove resources\cli from user PATH via PowerShell so long PATH values are handled safely
   InitPluginsDir
   ClearErrors

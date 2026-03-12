@@ -34,29 +34,29 @@ if (outDirs.length === 0) {
 }
 
 for (const outDir of outDirs) {
-console.log(`[portable-post-build] Finalizing portable edition in: ${outDir}`);
+  console.log(`[portable-post-build] Finalizing portable edition in: ${outDir}`);
 
-// 1. .portable marker
-const markerPath = join(outDir, '.portable');
-writeFileSync(markerPath, 'ClawPlus portable mode marker\nCreated by build script.\n', 'utf-8');
-console.log('  ✓ .portable marker created');
+  // 1. .portable marker
+  const markerPath = join(outDir, '.portable');
+  writeFileSync(markerPath, 'ClawPlus portable mode marker\nCreated by build script.\n', 'utf-8');
+  console.log('  ✓ .portable marker created');
 
-// 2. Pre-create LocalData directories
-const localData = join(outDir, 'LocalData');
-const subDirs = [
-  join(localData, 'electron-userData'),
-  join(localData, '.openclaw'),
-  join(localData, '.clawx'),
-  join(localData, 'logs'),
-  join(localData, 'secrets'),
-];
-for (const dir of subDirs) {
-  mkdirSync(dir, { recursive: true });
-}
-console.log('  ✓ LocalData directory structure created');
+  // 2. Pre-create LocalData directories
+  const localData = join(outDir, 'LocalData');
+  const subDirs = [
+    join(localData, 'electron-userData'),
+    join(localData, '.openclaw'),
+    join(localData, '.clawx'),
+    join(localData, 'logs'),
+    join(localData, 'secrets'),
+  ];
+  for (const dir of subDirs) {
+    mkdirSync(dir, { recursive: true });
+  }
+  console.log('  ✓ LocalData directory structure created');
 
-// 3. README
-const readmeContent = `=== ClawPlus Portable Edition ===
+  // 3. README
+  const readmeContent = `=== ClawPlus Portable Edition ===
 
 使用说明 / Usage:
   1. 将整个文件夹复制到 U 盘或任意位置
@@ -81,10 +81,10 @@ const readmeContent = `=== ClawPlus Portable Edition ===
     You can also set CLAWPLUS_PORTABLE=1 to force portable mode.
 `;
 
-writeFileSync(join(outDir, 'README-portable.txt'), readmeContent, 'utf-8');
-console.log('  ✓ README-portable.txt created');
+  writeFileSync(join(outDir, 'README-portable.txt'), readmeContent, 'utf-8');
+  console.log('  ✓ README-portable.txt created');
 
-console.log(`[portable-post-build] ✅ Done: ${outDir}`);
+  console.log(`[portable-post-build] ✅ Done: ${outDir}`);
 } // end for outDirs
 
 console.log('[portable-post-build] All done!');
