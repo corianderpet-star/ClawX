@@ -95,7 +95,7 @@ const defaultSettings = {
   proxyAllServer: '',
   proxyBypassRules: '<local>;localhost;127.0.0.1;::1',
   updateChannel: 'stable' as UpdateChannel,
-  autoCheckUpdate: true,
+  autoCheckUpdate: false, // temporarily disabled — CLAWPLUS_UPDATES_ENABLED = false
   autoDownloadUpdate: false,
   sidebarCollapsed: false,
   devModeUnlocked: false,

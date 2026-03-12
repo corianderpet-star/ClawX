@@ -232,7 +232,8 @@ export async function findExistingGatewayProcess(options: {
     }
 
     return await new Promise<{ port: number; externalToken?: string } | null>((resolve) => {
-      const testWs = new WebSocket(`ws://localhost:${port}/ws`);
+      // Use 127.0.0.1 to avoid IPv4/IPv6 resolution ambiguity on Windows
+      const testWs = new WebSocket(`ws://127.0.0.1:${port}/ws`);
       const timeout = setTimeout(() => {
         testWs.close();
         resolve(null);

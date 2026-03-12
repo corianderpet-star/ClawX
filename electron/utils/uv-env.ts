@@ -118,3 +118,14 @@ export async function warmupNetworkOptimization(): Promise<void> {
     // Ignore warmup failures
   }
 }
+
+/**
+ * Synchronous version of region optimization check.
+ * Uses only locale/timezone heuristics (no network probe).
+ * Suitable for synchronous call sites that just need a best-effort answer.
+ */
+export function isRegionOptimizedSync(): boolean {
+  if (cachedOptimized !== null) return cachedOptimized;
+  const { locale, timezone } = getLocaleAndTimezone();
+  return isRegionOptimized(locale, timezone);
+}

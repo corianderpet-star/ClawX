@@ -22,6 +22,13 @@ import {
 /** Base CDN URL (without trailing channel path) */
 const OSS_BASE_URL = 'http://zgonline.top';
 
+/**
+ * Set to `false` to temporarily disable ClawPlus self-update checks & downloads.
+ * The update UI section in Settings will be hidden when this is false.
+ * Flip back to `true` when ready to ship updates again.
+ */
+export const CLAWPLUS_UPDATES_ENABLED = false;
+
 export interface UpdateStatus {
   status: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
   info?: UpdateInfo;
@@ -203,6 +210,12 @@ export class AppUpdater extends EventEmitter {
    * final status so the UI never gets stuck in 'checking'.
    */
   async checkForUpdates(): Promise<UpdateInfo | null> {
+    // Temporarily disabled
+    if (!CLAWPLUS_UPDATES_ENABLED) {
+      this.updateStatus({ status: 'not-available' });
+      return null;
+    }
+
     try {
       const result = await autoUpdater.checkForUpdates();
 
@@ -238,6 +251,10 @@ export class AppUpdater extends EventEmitter {
    * - standard      → standard flow.
    */
   async downloadUpdate(): Promise<void> {
+    if (!CLAWPLUS_UPDATES_ENABLED) {
+      logger.info('[Updater] Updates temporarily disabled, skipping download');
+      return;
+    }
     if (this.usePortableZipFlow) {
       return this.downloadPortableZip();
     }

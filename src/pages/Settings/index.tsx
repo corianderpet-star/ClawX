@@ -1069,8 +1069,8 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Updates */}
-      <Card className="order-2">
+      {/* Updates — temporarily disabled (CLAWPLUS_UPDATES_ENABLED = false in updater.ts) */}
+      {/* <Card className="order-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
@@ -1112,7 +1112,7 @@ export function Settings() {
             />
           </div>
         </CardContent>
-      </Card>
+      </Card> */}
 
       {/* Advanced */}
       <Card className="order-2">

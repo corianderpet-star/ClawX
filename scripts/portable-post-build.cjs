@@ -12,8 +12,11 @@
 const { existsSync, mkdirSync, writeFileSync, readdirSync } = require('fs');
 const { join } = require('path');
 
-// Locate the win-unpacked output directory (electron-builder default)
-const releaseDir = join(__dirname, '..', 'release');
+// Locate the win-unpacked output directory.
+// Supports PORTABLE_RELEASE_DIR env var override.
+const releaseDir = process.env.PORTABLE_RELEASE_DIR
+  ? require('path').resolve(process.env.PORTABLE_RELEASE_DIR)
+  : join(__dirname, '..', 'release-portable-dir');
 
 function findAllWinUnpackedDirs() {
   if (!existsSync(releaseDir)) return [];

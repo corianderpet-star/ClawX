@@ -1484,6 +1484,48 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
     }
   });
 
+  // Check latest OpenClaw version from npm registry
+  ipcMain.handle('openclaw:checkLatestVersion', async () => {
+    try {
+      const { checkLatestOpenClawVersion } = await import('../services/openclaw-updater');
+      return await checkLatestOpenClawVersion();
+    } catch (error) {
+      logger.error('openclaw:checkLatestVersion failed:', error);
+      return {
+        currentVersion: undefined,
+        latestVersion: undefined,
+        isLatest: true,
+        updateAvailable: false,
+        error: String(error),
+      };
+    }
+  });
+
+  // Download and install latest OpenClaw package (with progress reporting)
+  ipcMain.handle('openclaw:update', async (event) => {
+    try {
+      const { updateOpenClawPackage } = await import('../services/openclaw-updater');
+      const win = BrowserWindow.fromWebContents(event.sender);
+
+      const result = await updateOpenClawPackage((progress) => {
+        // Push progress events to the renderer so it can show a live progress bar
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('openclaw:updateProgress', progress);
+        }
+      });
+
+      if (result.success) {
+        // Restart gateway after update so the new version is used
+        logger.info('OpenClaw updated, scheduling Gateway restart');
+        gatewayManager.debouncedRestart(3000);
+      }
+      return result;
+    } catch (error) {
+      logger.error('openclaw:update failed:', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
 
   // ==================== Channel Configuration Handlers ====================
 

@@ -13,7 +13,10 @@ export async function probeGatewayReady(
   timeoutMs = 1500,
 ): Promise<boolean> {
   return await new Promise<boolean>((resolve) => {
-    const testWs = new WebSocket(`ws://localhost:${port}/ws`);
+    // Use 127.0.0.1 instead of localhost to avoid IPv4/IPv6 resolution
+    // ambiguity on Windows. Some machines resolve localhost to ::1 (IPv6)
+    // while the Gateway only listens on IPv4, causing probe failures.
+    const testWs = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     let settled = false;
 
     const resolveOnce = (value: boolean) => {
@@ -78,15 +81,19 @@ export async function waitForGatewayReady(options: {
     try {
       const ready = await probeGatewayReady(options.port, 1500);
       if (ready) {
-        logger.debug(`Gateway ready after ${i + 1} attempt(s)`);
+        logger.info(`Gateway ready after ${i + 1} attempt(s)`);
         return;
       }
     } catch {
       // Gateway not ready yet.
     }
 
-    if (i > 0 && i % 10 === 0) {
-      logger.debug(`Still waiting for Gateway... (attempt ${i + 1}/${retries})`);
+    // Log progress at INFO level so it appears in diagnostic logs.
+    // First few attempts log every 5, then every 50 to avoid spam.
+    const logInterval = i < 50 ? 5 : 50;
+    if (i > 0 && i % logInterval === 0) {
+      const elapsedSec = Math.round((i * intervalMs) / 1000);
+      logger.info(`Still waiting for Gateway... (attempt ${i + 1}/${retries}, elapsed=${elapsedSec}s)`);
     }
 
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
@@ -170,10 +177,10 @@ export async function connectGatewaySocket(options: {
   onMessage: (message: unknown) => void;
   onCloseAfterHandshake: () => void;
 }): Promise<WebSocket> {
-  logger.debug(`Connecting Gateway WebSocket (ws://localhost:${options.port}/ws)`);
+  logger.info(`Connecting Gateway WebSocket (ws://127.0.0.1:${options.port}/ws)`);
 
   return await new Promise<WebSocket>((resolve, reject) => {
-    const wsUrl = `ws://localhost:${options.port}/ws`;
+    const wsUrl = `ws://127.0.0.1:${options.port}/ws`;
     const ws = new WebSocket(wsUrl);
     let handshakeComplete = false;
     let connectId: string | null = null;

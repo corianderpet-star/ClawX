@@ -287,8 +287,13 @@ export function getPortableChildEnv(): Record<string, string> {
     HOME: dataDir,           // macOS / Linux
     USERPROFILE: dataDir,    // Windows
 
-    // Explicit OpenClaw / ClawPlus overrides (in case they support XDG-style)
-    OPENCLAW_HOME: getPortableOpenClawConfigDir(),
+    // IMPORTANT: OpenClaw treats OPENCLAW_HOME as the "home directory" (~),
+    // NOT as the .openclaw state directory itself.  It then appends
+    // ".openclaw" internally to derive the state dir.  So we must point
+    // OPENCLAW_HOME at `dataDir` (= LocalData), not at `LocalData/.openclaw`,
+    // otherwise the runtime resolves to `LocalData/.openclaw/.openclaw` which
+    // diverges from the path ClawPlus writes config to (`LocalData/.openclaw`).
+    OPENCLAW_HOME: dataDir,
     CLAWPLUS_DATA: dataDir,
     CLAWPLUS_PORTABLE: '1',
     CLAWPLUS_PORTABLE_DATA: dataDir,

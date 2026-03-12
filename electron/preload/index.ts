@@ -28,6 +28,9 @@ const electronAPI = {
         // OpenClaw
         'openclaw:status',
         'openclaw:isReady',
+        // OpenClaw updates
+        'openclaw:checkLatestVersion',
+        'openclaw:update',
         // Shell
         'shell:openExternal',
         'shell:showItemInFolder',
@@ -184,6 +187,7 @@ const electronAPI = {
         'oauth:success',
         'oauth:error',
         'openclaw:cli-installed',
+        'openclaw:updateProgress',
         'migration:progress',
       ];
 

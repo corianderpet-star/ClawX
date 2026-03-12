@@ -23,6 +23,7 @@ import {
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -378,6 +379,40 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   const [openclawDir, setOpenclawDir] = useState('');
   const gatewayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // OpenClaw version update state
+  const [openclawUpdateAvailable, setOpenclawUpdateAvailable] = useState(false);
+  const [openclawLatestVersion, setOpenclawLatestVersion] = useState<string | undefined>();
+  const [openclawUpdating, setOpenclawUpdating] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<{
+    stage: string;
+    percent: number;
+    message: string;
+  } | null>(null);
+  const [updateLogs, setUpdateLogs] = useState<string[]>([]);
+  const updateLogRef = useRef<HTMLPreElement>(null);
+
+  // Listen for OpenClaw update progress events from the main process
+  useEffect(() => {
+    const unsub = window.electron.ipcRenderer.on(
+      'openclaw:updateProgress',
+      (data: unknown) => {
+        const progress = data as { stage: string; percent: number; message: string; log?: string };
+        setUpdateProgress(progress);
+        if (progress.log) {
+          setUpdateLogs((prev) => [...prev.slice(-200), progress.log!]);
+        }
+      },
+    );
+    return () => { unsub?.(); };
+  }, []);
+
+  // Auto-scroll log area to bottom
+  useEffect(() => {
+    if (updateLogRef.current) {
+      updateLogRef.current.scrollTop = updateLogRef.current.scrollHeight;
+    }
+  }, [updateLogs]);
+
   const runChecks = useCallback(async () => {
     // Reset checks
     setChecks({
@@ -385,6 +420,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
       openclaw: { status: 'checking', message: '' },
       gateway: { status: 'checking', message: '' },
     });
+    setOpenclawUpdateAvailable(false);
 
     // Check Node.js — always available in Electron
     setChecks((prev) => ({
@@ -424,10 +460,50 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         setChecks((prev) => ({
           ...prev,
           openclaw: {
-            status: 'success',
-            message: `OpenClaw package ready${versionLabel}`
+            status: 'checking',
+            message: `OpenClaw package ready${versionLabel}, ${t('runtime.status.checkingUpdate', 'checking for updates...')}`
           },
         }));
+
+        // Check for latest version from npm registry
+        try {
+          const versionResult = await invokeIpc('openclaw:checkLatestVersion') as {
+            currentVersion?: string;
+            latestVersion?: string;
+            isLatest: boolean;
+            updateAvailable: boolean;
+            error?: string;
+          };
+
+          if (versionResult.updateAvailable && versionResult.latestVersion) {
+            setOpenclawUpdateAvailable(true);
+            setOpenclawLatestVersion(versionResult.latestVersion);
+            setChecks((prev) => ({
+              ...prev,
+              openclaw: {
+                status: 'success',
+                message: `OpenClaw package ready${versionLabel} (${t('runtime.status.updateAvailable', 'update available')}: v${versionResult.latestVersion})`,
+              },
+            }));
+          } else {
+            setChecks((prev) => ({
+              ...prev,
+              openclaw: {
+                status: 'success',
+                message: `OpenClaw package ready${versionLabel} (${t('runtime.status.latestVersion', 'latest')})`,
+              },
+            }));
+          }
+        } catch {
+          // Version check failed, still mark as success (package is usable)
+          setChecks((prev) => ({
+            ...prev,
+            openclaw: {
+              status: 'success',
+              message: `OpenClaw package ready${versionLabel}`
+            },
+          }));
+        }
       }
     } catch (error) {
       setChecks((prev) => ({
@@ -518,7 +594,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         }
         return prev;
       });
-    }, 600 * 1000); // 600 seconds — enough for gateway to fully initialize
+    }, 180 * 1000); // 180 seconds — enough for gateway to fully initialize on most machines
 
     return () => {
       if (gatewayTimeoutRef.current) {
@@ -527,6 +603,63 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
       }
     };
   }, [gatewayStatus.state]);
+
+  const handleUpdateOpenClaw = async () => {
+    setOpenclawUpdating(true);
+    setUpdateProgress({ stage: 'downloading', percent: 0, message: 'Starting update…' });
+    setUpdateLogs([]);
+    setChecks((prev) => ({
+      ...prev,
+      openclaw: {
+        status: 'checking',
+        message: t('runtime.status.updating', 'Downloading and installing latest version...'),
+      },
+    }));
+
+    try {
+      const result = await invokeIpc('openclaw:update') as {
+        success: boolean;
+        oldVersion?: string;
+        newVersion?: string;
+        error?: string;
+      };
+
+      if (result.success) {
+        setOpenclawUpdateAvailable(false);
+        setChecks((prev) => ({
+          ...prev,
+          openclaw: {
+            status: 'success',
+            message: `OpenClaw package ready v${result.newVersion || '?'} (${t('runtime.status.latestVersion', 'latest')})`,
+          },
+        }));
+        toast.success(t('runtime.status.updateSuccess', `OpenClaw updated to v${result.newVersion}`));
+      } else {
+        // Update failed, but the current package is still usable — keep status as success
+        setChecks((prev) => ({
+          ...prev,
+          openclaw: {
+            status: 'success',
+            message: prev.openclaw.message.replace(/Downloading.*/, result.error || 'Update failed, using current version'),
+          },
+        }));
+        toast.error(result.error || 'OpenClaw update failed');
+      }
+    } catch (error) {
+      // Update failed, but the current package is still usable
+      setChecks((prev) => ({
+        ...prev,
+        openclaw: {
+          status: 'success',
+          message: `OpenClaw package ready (update failed, using current version)`,
+        },
+      }));
+      toast.error(`OpenClaw update failed: ${error}`);
+    } finally {
+      setOpenclawUpdating(false);
+      setUpdateProgress(null);
+    }
+  };
 
   const handleStartGateway = async () => {
     setChecks((prev) => ({
@@ -563,17 +696,17 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   const renderStatus = (status: 'checking' | 'success' | 'error', message: string) => {
     if (status === 'checking') {
       return (
-        <span className="flex items-center gap-2 text-yellow-400 whitespace-nowrap">
+        <span className="flex items-center gap-2 text-yellow-400">
           <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin" />
-          {message || 'Checking...'}
+          <span className="break-words">{message || 'Checking...'}</span>
         </span>
       );
     }
     if (status === 'success') {
       return (
-        <span className="flex items-center gap-2 text-green-400 whitespace-nowrap">
+        <span className="flex items-center gap-2 text-green-400">
           <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
-          {message}
+          <span className="break-words">{message}</span>
         </span>
       );
     }
@@ -582,7 +715,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     const displayMsg = isLong ? message.slice(0, ERROR_TRUNCATE_LEN) : message;
 
     return (
-      <span className="flex items-center gap-2 text-red-400 whitespace-nowrap">
+      <span className="flex items-center gap-2 text-red-400">
         <XCircle className="h-5 w-5 flex-shrink-0" />
         <span>{displayMsg}</span>
         {isLong && (
@@ -614,26 +747,53 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         </div>
       </div>
       <div className="space-y-3">
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-center gap-4 p-3 rounded-lg bg-muted/50">
           <span className="text-left">{t('runtime.nodejs')}</span>
           <div className="flex justify-end">
             {renderStatus(checks.nodejs.status, checks.nodejs.message)}
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
-          <div className="text-left min-w-0">
-            <span>{t('runtime.openclaw')}</span>
-            {openclawDir && (
-              <p className="text-xs text-muted-foreground mt-0.5 font-mono break-all">
-                {openclawDir}
-              </p>
-            )}
+        <div className="rounded-lg bg-muted/50 p-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-start gap-4">
+            <div className="text-left min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>{t('runtime.openclaw')}</span>
+                {openclawUpdateAvailable && !openclawUpdating && (
+                  <Button variant="outline" size="sm" className="h-6 text-xs" onClick={handleUpdateOpenClaw}>
+                    {t('runtime.status.updateBtn', `Update to v${openclawLatestVersion}`)}
+                  </Button>
+                )}
+              </div>
+              {openclawDir && (
+                <p className="text-xs text-muted-foreground mt-0.5 font-mono truncate" title={openclawDir}>
+                  {openclawDir}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end shrink-0 mt-0.5">
+              {renderStatus(checks.openclaw.status, checks.openclaw.message)}
+            </div>
           </div>
-          <div className="flex justify-end self-start mt-0.5">
-            {renderStatus(checks.openclaw.status, checks.openclaw.message)}
-          </div>
+          {/* Progress bar & log shown during OpenClaw update */}
+          {openclawUpdating && updateProgress && (
+            <div className="mt-3 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{updateProgress.message}</span>
+                <span>{Math.round(updateProgress.percent)}%</span>
+              </div>
+              <Progress value={updateProgress.percent} className="h-2" />
+              {updateLogs.length > 0 && (
+                <pre
+                  ref={updateLogRef}
+                  className="mt-2 text-[10px] leading-tight text-muted-foreground bg-black/40 rounded p-2 max-h-28 overflow-auto font-mono whitespace-pre-wrap"
+                >
+                  {updateLogs.join('\n')}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-center gap-4 p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-2 text-left">
             <span>Gateway Service</span>
             {checks.gateway.status === 'error' && (
