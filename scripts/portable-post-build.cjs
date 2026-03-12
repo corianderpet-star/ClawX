@@ -15,24 +15,25 @@ const { join } = require('path');
 // Locate the win-unpacked output directory (electron-builder default)
 const releaseDir = join(__dirname, '..', 'release');
 
-function findWinUnpackedDir() {
-  if (!existsSync(releaseDir)) return null;
+function findAllWinUnpackedDirs() {
+  if (!existsSync(releaseDir)) return [];
   const entries = readdirSync(releaseDir);
-  // Prefer win-unpacked, then win-x64-unpacked, etc.
+  const dirs = [];
   for (const name of entries) {
     if (name.match(/^win.*-unpacked$/)) {
-      return join(releaseDir, name);
+      dirs.push(join(releaseDir, name));
     }
   }
-  return null;
+  return dirs;
 }
 
-const outDir = findWinUnpackedDir();
-if (!outDir) {
+const outDirs = findAllWinUnpackedDirs();
+if (outDirs.length === 0) {
   console.error('[portable-post-build] Could not find win-*-unpacked directory in release/');
   process.exit(1);
 }
 
+for (const outDir of outDirs) {
 console.log(`[portable-post-build] Finalizing portable edition in: ${outDir}`);
 
 // 1. .portable marker
@@ -83,4 +84,7 @@ const readmeContent = `=== ClawPlus Portable Edition ===
 writeFileSync(join(outDir, 'README-portable.txt'), readmeContent, 'utf-8');
 console.log('  ✓ README-portable.txt created');
 
-console.log('[portable-post-build] Done!');
+console.log(`[portable-post-build] ✅ Done: ${outDir}`);
+} // end for outDirs
+
+console.log('[portable-post-build] All done!');
