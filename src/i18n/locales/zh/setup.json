@@ -50,6 +50,22 @@
       "gatewayRunning": "运行在端口 {{port}}",
       "packageReady": "OpenClaw 包已就绪"
     },
+    "update": {
+      "checking": "检查更新...",
+      "available": "发现新版本 v{{version}}",
+      "current": "当前版本: v{{version}}",
+      "latest": "最新版本: v{{version}}",
+      "prompt": "检测到 OpenClaw 新版本可用，是否立即更新？",
+      "riskWarning": "⚠️ 更新风险提示：更新过程中将替换核心运行文件，可能导致现有会话中断或配置不兼容。建议在无活跃会话时进行更新。如遇问题，可通过重新安装应用恢复。",
+      "updateBtn": "立即更新",
+      "skipBtn": "跳过，使用当前版本",
+      "downloading": "正在下载 v{{version}}... {{percent}}%",
+      "extracting": "正在解压包...",
+      "installing": "正在安装更新...",
+      "done": "已更新到 v{{version}}",
+      "error": "更新失败: {{message}}",
+      "networkError": "无法连接到更新服务器，将使用当前版本"
+    },
     "issue": {
       "title": "检测到环境问题",
       "desc": "请确保 OpenClaw 已正确安装。查看日志以获取详情。"

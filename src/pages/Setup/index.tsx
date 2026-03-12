@@ -19,12 +19,15 @@ import {
   XCircle,
   ExternalLink,
   Copy,
+  Download,
+  AlertTriangle,
 } from 'lucide-react';
 import { TitleBar } from '@/components/layout/TitleBar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useGatewayStore } from '@/stores/gateway';
 import { useSettingsStore } from '@/stores/settings';
@@ -378,6 +381,39 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
   const [openclawDir, setOpenclawDir] = useState('');
   const gatewayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // ── OpenClaw update state ──────────────────────────────────────────────
+  const [updateCheck, setUpdateCheck] = useState<{
+    status: 'idle' | 'checking' | 'available' | 'not-available' | 'error';
+    currentVersion: string;
+    latestVersion: string;
+  }>({ status: 'idle', currentVersion: '', latestVersion: '' });
+  const [updateProgress, setUpdateProgress] = useState<{
+    phase: string;
+    percent: number;
+    message: string;
+  } | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateSkipped, setUpdateSkipped] = useState(false);
+
+  // Listen for update progress events from main process
+  useEffect(() => {
+    const ipc = window.electron?.ipcRenderer;
+    if (!ipc?.on) return;
+    const unsub = ipc.on('openclaw:update-progress', (data: unknown) => {
+      const progress = data as { phase: string; percent: number; message: string };
+      setUpdateProgress(progress);
+      if (progress.phase === 'done') {
+        setIsUpdating(false);
+        // Re-run checks to reflect updated version
+        setTimeout(() => runChecks(), 500);
+      } else if (progress.phase === 'error') {
+        setIsUpdating(false);
+      }
+    });
+    return () => { unsub?.(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const runChecks = useCallback(async () => {
     // Reset checks
     setChecks({
@@ -385,6 +421,11 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
       openclaw: { status: 'checking', message: '' },
       gateway: { status: 'checking', message: '' },
     });
+    // Reset update state on re-check
+    setUpdateCheck({ status: 'idle', currentVersion: '', latestVersion: '' });
+    setUpdateProgress(null);
+    setIsUpdating(false);
+    setUpdateSkipped(false);
 
     // Check Node.js — always available in Electron
     setChecks((prev) => ({
@@ -393,6 +434,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     }));
 
     // Check OpenClaw package status
+    let openclawOk = false;
     try {
       const openclawStatus = await invokeIpc('openclaw:status') as {
         packageExists: boolean;
@@ -420,6 +462,7 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
           },
         }));
       } else {
+        openclawOk = true;
         const versionLabel = openclawStatus.version ? ` v${openclawStatus.version}` : '';
         setChecks((prev) => ({
           ...prev,
@@ -434,6 +477,25 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
         ...prev,
         openclaw: { status: 'error', message: `Check failed: ${error}` },
       }));
+    }
+
+    // Auto-check for OpenClaw updates after package check succeeds
+    if (openclawOk) {
+      setUpdateCheck((prev) => ({ ...prev, status: 'checking' }));
+      try {
+        const result = await invokeIpc('openclaw:checkUpdate') as {
+          currentVersion: string;
+          latestVersion: string;
+          hasUpdate: boolean;
+        };
+        setUpdateCheck({
+          status: result.hasUpdate ? 'available' : 'not-available',
+          currentVersion: result.currentVersion,
+          latestVersion: result.latestVersion,
+        });
+      } catch {
+        setUpdateCheck((prev) => ({ ...prev, status: 'error' }));
+      }
     }
 
     // Check Gateway — read directly from store to avoid stale closure
@@ -536,6 +598,21 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     await startGateway();
   };
 
+  const handleStartUpdate = async () => {
+    setIsUpdating(true);
+    setUpdateProgress({ phase: 'checking', percent: 0, message: t('runtime.update.checking') });
+    try {
+      await invokeIpc('openclaw:update');
+    } catch (error) {
+      setIsUpdating(false);
+      setUpdateProgress({ phase: 'error', percent: 0, message: String(error) });
+    }
+  };
+
+  const handleSkipUpdate = () => {
+    setUpdateSkipped(true);
+  };
+
   const handleShowLogs = async () => {
     try {
       const logs = await hostApiFetch<{ content: string }>('/api/logs?tailLines=100');
@@ -599,6 +676,9 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
     );
   };
 
+  // Determine if we should show the update prompt
+  const showUpdatePrompt = updateCheck.status === 'available' && !updateSkipped && !isUpdating && !updateProgress;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
@@ -633,6 +713,87 @@ function RuntimeContent({ onStatusChange }: RuntimeContentProps) {
             {renderStatus(checks.openclaw.status, checks.openclaw.message)}
           </div>
         </div>
+
+        {/* OpenClaw update check indicator */}
+        {updateCheck.status === 'checking' && (
+          <div className="flex items-center gap-2 px-3 py-2 text-sm text-yellow-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('runtime.update.checking')}
+          </div>
+        )}
+
+        {/* Update available prompt with risk warning */}
+        {showUpdatePrompt && (
+          <div className="p-4 rounded-lg bg-blue-900/20 border border-blue-500/30">
+            <div className="flex items-start gap-3">
+              <Download className="h-5 w-5 text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <p className="font-medium text-blue-400">
+                  {t('runtime.update.available', { version: updateCheck.latestVersion })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t('runtime.update.current', { version: updateCheck.currentVersion })}
+                  {' → '}
+                  {t('runtime.update.latest', { version: updateCheck.latestVersion })}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {t('runtime.update.prompt')}
+                </p>
+                {/* Risk warning */}
+                <div className="p-3 rounded-md bg-yellow-900/20 border border-yellow-500/20">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-yellow-300/90 leading-relaxed">
+                      {t('runtime.update.riskWarning')}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button size="sm" onClick={handleStartUpdate}>
+                    <Download className="h-4 w-4 mr-1" />
+                    {t('runtime.update.updateBtn')}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={handleSkipUpdate}>
+                    {t('runtime.update.skipBtn')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Update progress bar */}
+        {(isUpdating || updateProgress) && updateProgress && updateProgress.phase !== 'done' && updateProgress.phase !== 'error' && (
+          <div className="p-4 rounded-lg bg-blue-900/20 border border-blue-500/30 space-y-3">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
+              <span className="text-sm text-blue-300">{updateProgress.message}</span>
+            </div>
+            <Progress value={updateProgress.percent} className="h-2" />
+            <p className="text-xs text-muted-foreground text-right">{updateProgress.percent}%</p>
+          </div>
+        )}
+
+        {/* Update completed */}
+        {updateProgress?.phase === 'done' && (
+          <div className="p-3 rounded-lg bg-green-900/20 border border-green-500/20">
+            <div className="flex items-center gap-2 text-green-400">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="text-sm font-medium">{updateProgress.message}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Update error */}
+        {updateProgress?.phase === 'error' && (
+          <div className="p-3 rounded-lg bg-red-900/20 border border-red-500/20">
+            <div className="flex items-center gap-2 text-red-400">
+              <XCircle className="h-5 w-5" />
+              <span className="text-sm">{t('runtime.update.error', { message: updateProgress.message })}</span>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-[1fr_auto] items-center gap-4 p-3 rounded-lg bg-muted/50">
           <div className="flex items-center gap-2 text-left">
             <span>Gateway Service</span>

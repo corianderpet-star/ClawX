@@ -14,6 +14,7 @@ import {
 } from '../utils/secure-storage';
 import { getOpenClawStatus, getOpenClawDir, getOpenClawConfigDir, getOpenClawSkillsDir, ensureDir } from '../utils/paths';
 import { getOpenClawCliCommand } from '../utils/openclaw-cli';
+import { checkOpenClawUpdate, updateOpenClaw } from '../utils/openclaw-update';
 import { getAllSettings, getSetting, resetSettings, setSetting, type AppSettings } from '../utils/store';
 import {
   saveProviderKeyToOpenClaw,
@@ -1481,6 +1482,34 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
       return { success: true, command: getOpenClawCliCommand() };
     } catch (error) {
       return { success: false, error: String(error) };
+    }
+  });
+
+  // Check for OpenClaw package updates from npm registry
+  ipcMain.handle('openclaw:checkUpdate', async () => {
+    try {
+      return await checkOpenClawUpdate();
+    } catch (error) {
+      logger.error('openclaw:checkUpdate failed', error);
+      return { currentVersion: '0.0.0', latestVersion: '0.0.0', hasUpdate: false };
+    }
+  });
+
+  // Update OpenClaw package to the latest version (sends progress events)
+  ipcMain.handle('openclaw:update', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    try {
+      return await updateOpenClaw(
+        (progress) => {
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('openclaw:update-progress', progress);
+          }
+        },
+        win,
+      );
+    } catch (error) {
+      logger.error('openclaw:update failed', error);
+      return false;
     }
   });
 

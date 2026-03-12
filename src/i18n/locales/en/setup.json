@@ -50,6 +50,22 @@
       "gatewayRunning": "Running on port {{port}}",
       "packageReady": "OpenClaw package ready"
     },
+    "update": {
+      "checking": "Checking for updates...",
+      "available": "New version v{{version}} available",
+      "current": "Current version: v{{version}}",
+      "latest": "Latest version: v{{version}}",
+      "prompt": "A newer version of OpenClaw is available. Would you like to update now?",
+      "riskWarning": "⚠️ Update Risk Warning: The update will replace core runtime files, which may interrupt active sessions or cause configuration incompatibilities. It is recommended to update when there are no active sessions. If issues occur, you can recover by reinstalling the application.",
+      "updateBtn": "Update Now",
+      "skipBtn": "Skip, use current version",
+      "downloading": "Downloading v{{version}}... {{percent}}%",
+      "extracting": "Extracting package...",
+      "installing": "Installing update...",
+      "done": "Updated to v{{version}}",
+      "error": "Update failed: {{message}}",
+      "networkError": "Cannot connect to update server, will use current version"
+    },
     "issue": {
       "title": "Environment issue detected",
       "desc": "Please ensure OpenClaw is properly installed. Check the logs for details."

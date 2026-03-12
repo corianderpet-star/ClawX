@@ -86,7 +86,7 @@ Building AI agents shouldn't require mastering the command line. ClawPlus was de
 
 ### OpenClaw Inside
 
-ClawPlus is built directly upon the official **OpenClaw** core. Instead of requiring a separate installation, we embed the runtime within the application to provide a seamless "battery-included" experience.
+ClawPlus is built directly upon the official **OpenClaw** core (currently bundled: **v2026.3.8**). Instead of requiring a separate installation, we embed the runtime within the application to provide a seamless "battery-included" experience.
 
 We are committed to maintaining strict alignment with the upstream OpenClaw project, ensuring that you always have access to the latest capabilities, stability improvements, and ecosystem compatibility provided by the official releases.
 
@@ -161,9 +161,10 @@ pnpm dev
 When you launch ClawPlus for the first time, the **Setup Wizard** will guide you through:
 
 1. **Language & Region** – Configure your preferred locale
-2. **AI Provider** – Enter your API keys for supported providers
-3. **Skill Bundles** – Select pre-configured skills for common use cases
-4. **Verification** – Test your configuration before entering the main interface
+2. **Environment Check** – Verify system requirements (Node.js, OpenClaw package, Gateway). The wizard automatically checks if a newer OpenClaw version is available from the npm registry. If an update is found, you will be prompted with a risk warning and can choose to update (with a real-time progress bar) or skip and continue with the current version.
+3. **AI Provider** – Enter your API keys for supported providers
+4. **Skill Bundles** – Select pre-configured skills for common use cases
+5. **Verification** – Test your configuration before entering the main interface
 
 > Note for Moonshot (Kimi): ClawPlus keeps Kimi web search enabled by default.  
 > When Moonshot is configured, ClawPlus also syncs Kimi web search to the China endpoint (`https://api.moonshot.cn/v1`) in OpenClaw config.
