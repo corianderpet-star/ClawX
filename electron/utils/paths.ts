@@ -90,14 +90,39 @@ export function getPreloadPath(): string {
 /**
  * Get OpenClaw package directory
  * - Production (packaged): from resources/openclaw (copied by electron-builder extraResources)
- * - Development: from node_modules/openclaw
+ * - Development: prefers build/openclaw when it exists and carries a newer
+ *   version than node_modules/openclaw, so dev always runs the latest bundled
+ *   runtime (e.g. forward-compat model support).
  */
 export function getOpenClawDir(): string {
   if (app.isPackaged) {
     return join(process.resourcesPath, 'openclaw');
   }
-  // Development: use node_modules/openclaw
-  return join(__dirname, '../../node_modules/openclaw');
+
+  const nodeModulesDir = join(__dirname, '../../node_modules/openclaw');
+  const buildDir = join(__dirname, '../../build/openclaw');
+
+  // Prefer build/openclaw if it exists and has a newer (or equal) version.
+  if (existsSync(join(buildDir, 'openclaw.mjs'))) {
+    const buildVer = readPackageVersion(join(buildDir, 'package.json'));
+    const nmVer = readPackageVersion(join(nodeModulesDir, 'package.json'));
+    if (buildVer && (!nmVer || buildVer >= nmVer)) {
+      return buildDir;
+    }
+  }
+
+  return nodeModulesDir;
+}
+
+/** Read the `version` field from a package.json, or return undefined. */
+function readPackageVersion(pkgPath: string): string | undefined {
+  try {
+    const raw = readFileSync(pkgPath, 'utf-8');
+    const data = JSON.parse(raw) as { version?: string };
+    return data.version;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

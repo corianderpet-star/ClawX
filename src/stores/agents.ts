@@ -27,6 +27,25 @@ export interface CreateAgentInput {
   requireMention?: boolean;
 }
 
+/** Input for updating an existing agent */
+export interface UpdateAgentInput {
+  agentId: string;
+  name?: string;
+  description?: string;
+  model?: string;
+  tools?: {
+    profile?: string;
+    allow?: string[];
+    deny?: string[];
+  };
+  /** Per-agent skill allowlist. undefined = don't change; string[] = set allowlist; null = clear (all skills). */
+  skills?: string[] | null;
+  role?: 'lead' | 'sub';
+  allowCrossComm?: boolean;
+  requireMention?: boolean;
+  emoji?: string;
+}
+
 interface AgentsState {
   /** All available agents */
   agents: Agent[];
@@ -50,6 +69,8 @@ interface AgentsState {
   deleteAgent: (agentId: string, removeFiles?: boolean) => Promise<boolean>;
   /** Rename an agent */
   renameAgent: (agentId: string, name: string) => Promise<boolean>;
+  /** Update agent fields (model, tools, description, etc.) */
+  updateAgent: (input: UpdateAgentInput) => Promise<boolean>;
   /** Read SOUL.md content for an agent */
   readSoul: (agentId: string) => Promise<string>;
   /** Write SOUL.md content for an agent */
@@ -80,35 +101,73 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
     set({ loading: true, error: null });
 
     try {
-      const result = await invokeIpc(
-        'gateway:rpc',
-        'agents.list',
-        {},
-      ) as { success: boolean; result?: unknown; error?: string };
+      // Fetch from two sources in parallel:
+      // 1. Gateway RPC (runtime status: id, name, identity)
+      // 2. Local config file (full data: skills, model, description, tools, etc.)
+      const [rpcResult, configResult] = await Promise.all([
+        invokeIpc(
+          'gateway:rpc',
+          'agents.list',
+          {},
+        ).catch(() => null) as Promise<{ success: boolean; result?: unknown; error?: string } | null>,
+        invokeIpc('agent:list').catch(() => null) as Promise<Array<Record<string, unknown>> | null>,
+      ]);
 
-      if (result.success && result.result) {
-        const data = result.result as Record<string, unknown>;
+      // Build config lookup map (by agent id)
+      const configMap = new Map<string, Record<string, unknown>>();
+      if (Array.isArray(configResult)) {
+        for (const entry of configResult) {
+          const id = String(entry.id || '');
+          if (id) configMap.set(id, entry);
+        }
+      }
+
+      let rawAgents: Record<string, unknown>[] = [];
+      if (rpcResult?.success && rpcResult.result) {
+        const data = rpcResult.result as Record<string, unknown>;
         // OpenClaw agents.list returns { agents: [...] } or a direct array
-        const rawAgents = Array.isArray(data)
+        rawAgents = Array.isArray(data)
           ? data
           : Array.isArray(data.agents)
             ? data.agents
             : [];
+      }
 
-        const agents: Agent[] = rawAgents.map((raw: Record<string, unknown>) => ({
-          id: String(raw.id || raw.agentId || raw.name || ''),
-          name: String(raw.name || raw.id || raw.agentId || 'Unknown'),
-          description: raw.description ? String(raw.description) : undefined,
-          model: raw.model ? String(raw.model) : undefined,
-          provider: raw.provider ? String(raw.provider) : undefined,
-          systemPrompt: raw.systemPrompt ? String(raw.systemPrompt) : undefined,
-          skills: Array.isArray(raw.skills) ? raw.skills.map(String) : undefined,
-          isMain: raw.isMain === true || raw.id === 'main' || raw.agentId === 'main',
-          status: (raw.status as Agent['status']) || 'idle',
-          createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : undefined,
-          lastActiveAt: typeof raw.lastActiveAt === 'number' ? raw.lastActiveAt : undefined,
-          config: (raw.config && typeof raw.config === 'object') ? raw.config as Record<string, unknown> : undefined,
-        })).filter((a: Agent) => a.id);
+      // If gateway didn't return agents, fall back to config file as the source
+      if (rawAgents.length === 0 && configMap.size > 0) {
+        rawAgents = Array.from(configMap.values());
+      }
+
+      if (rawAgents.length > 0) {
+        const agents: Agent[] = rawAgents.map((raw: Record<string, unknown>) => {
+          const id = String(raw.id || raw.agentId || raw.name || '');
+          // Merge with config data to fill fields not returned by gateway RPC
+          const cfg = configMap.get(id);
+          return {
+            id,
+            name: String(raw.name || cfg?.name || id || 'Unknown'),
+            description: (raw.description || cfg?.description) ? String(raw.description || cfg?.description) : undefined,
+            model: (raw.model || cfg?.model) ? String(raw.model || cfg?.model) : undefined,
+            provider: raw.provider ? String(raw.provider) : undefined,
+            systemPrompt: raw.systemPrompt ? String(raw.systemPrompt) : undefined,
+            skills: Array.isArray(raw.skills)
+              ? raw.skills.map(String)
+              : Array.isArray(cfg?.skills)
+                ? (cfg.skills as unknown[]).map(String)
+                : undefined,
+            isMain: raw.isMain === true || cfg?.default === true || raw.id === 'main' || raw.agentId === 'main',
+            status: (raw.status as Agent['status']) || 'idle',
+            createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : undefined,
+            lastActiveAt: typeof raw.lastActiveAt === 'number' ? raw.lastActiveAt : undefined,
+            config: (raw.config && typeof raw.config === 'object') ? raw.config as Record<string, unknown> : undefined,
+            role: (cfg?.role as Agent['role']) || undefined,
+            identity: (raw.identity && typeof raw.identity === 'object')
+              ? raw.identity as Agent['identity']
+              : (cfg?.identity && typeof cfg.identity === 'object')
+                ? cfg.identity as Agent['identity']
+                : undefined,
+          };
+        }).filter((a: Agent) => a.id);
 
         // Ensure 'main' agent exists if no agents returned (single-agent fallback)
         if (agents.length === 0) {
@@ -226,6 +285,42 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
       return true;
     } catch (err) {
       console.error('Failed to rename agent:', err);
+      set({ saving: false, error: String(err) });
+      return false;
+    }
+  },
+
+  updateAgent: async (input: UpdateAgentInput) => {
+    set({ saving: true, error: null });
+    try {
+      const result = await invokeIpc('agent:update', input) as { ok?: boolean; error?: { message?: string } };
+      if (result && result.ok === false && result.error) {
+        throw new Error(result.error.message || 'Failed to update agent');
+      }
+      // Update local state immediately with provided fields
+      set((state) => ({
+        saving: false,
+        agents: state.agents.map((a) => {
+          if (a.id !== input.agentId) return a;
+          const updated = { ...a };
+          if (input.name !== undefined) updated.name = input.name;
+          if (input.description !== undefined) updated.description = input.description;
+          if (input.model !== undefined) updated.model = input.model;
+          if (input.role !== undefined) updated.role = input.role;
+          if (input.emoji !== undefined) {
+            updated.identity = { ...updated.identity, emoji: input.emoji };
+          }
+          if (input.skills !== undefined) {
+            updated.skills = input.skills === null ? undefined : input.skills;
+          }
+          return updated;
+        }),
+      }));
+      // Reload from gateway to get full state
+      await get().loadAgents();
+      return true;
+    } catch (err) {
+      console.error('Failed to update agent:', err);
       set({ saving: false, error: String(err) });
       return false;
     }

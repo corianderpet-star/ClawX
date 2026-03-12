@@ -25,6 +25,7 @@ export interface AppSettings {
   language: string;
   startMinimized: boolean;
   launchAtStartup: boolean;
+  closeToTray: boolean;
   
   // Gateway
   gatewayAutoStart: boolean;
@@ -68,6 +69,7 @@ const defaults: AppSettings = {
   language: 'en',
   startMinimized: false,
   launchAtStartup: false,
+  closeToTray: true,
   
   // Gateway
   gatewayAutoStart: true,

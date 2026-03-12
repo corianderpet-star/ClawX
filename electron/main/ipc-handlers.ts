@@ -55,7 +55,7 @@ import { appUpdater } from './updater';
 import { PORTS } from '../utils/config';
 import { exportBackup, importBackup, getBackupSummary, type ImportOptions, DEFAULT_IMPORT_OPTIONS, type BackupManifest } from '../utils/migration';
 import { ensureDingTalkPluginInstalled, ensureQQBotPluginInstalled } from '../utils/plugin-install';
-import { createAgent, deleteAgent, renameAgent, listAgentsFromConfig, readAgentSoul, writeAgentSoul, type CreateAgentInput } from '../utils/agent-config';
+import { createAgent, deleteAgent, renameAgent, updateAgent, listAgentsFromConfig, readAgentSoul, writeAgentSoul, type CreateAgentInput, type UpdateAgentInput } from '../utils/agent-config';
 
 type AppRequest = {
   id?: string;
@@ -579,13 +579,13 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
           }
           if (request.action === 'create') {
             const payload = request.payload as
-              | { input?: { name: string; message: string; schedule: string; enabled?: boolean } }
-              | [{ name: string; message: string; schedule: string; enabled?: boolean }]
-              | { name: string; message: string; schedule: string; enabled?: boolean }
+              | { input?: { name: string; message: string; schedule: string; enabled?: boolean; agentId?: string } }
+              | [{ name: string; message: string; schedule: string; enabled?: boolean; agentId?: string }]
+              | { name: string; message: string; schedule: string; enabled?: boolean; agentId?: string }
               | undefined;
             const input = Array.isArray(payload)
               ? payload[0]
-              : ('input' in (payload ?? {}) ? (payload as { input: { name: string; message: string; schedule: string; enabled?: boolean } }).input : payload);
+              : ('input' in (payload ?? {}) ? (payload as { input: { name: string; message: string; schedule: string; enabled?: boolean; agentId?: string } }).input : payload);
             if (!input) throw new Error('Invalid cron.create payload');
             const gatewayInput = {
               name: input.name,
@@ -595,6 +595,7 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
               wakeMode: 'next-heartbeat',
               sessionTarget: 'isolated',
               delivery: { mode: 'none' },
+              ...(input.agentId ? { agentId: input.agentId } : {}),
             };
             const created = await gatewayManager.rpc('cron.add', gatewayInput);
             data = created && typeof created === 'object' ? transformCronJob(created as GatewayCronJob) : created;
@@ -750,6 +751,16 @@ function registerUnifiedRequestHandlers(gatewayManager: GatewayManager): void {
             data = { success: true };
             break;
           }
+          if (request.action === 'update') {
+            const payload = request.payload as UpdateAgentInput | undefined;
+            if (!payload?.agentId) throw new Error('Invalid agent.update payload: agentId is required');
+            data = await updateAgent(payload);
+            // Reload gateway config to apply changes
+            if (gatewayManager.getStatus().state === 'running') {
+              gatewayManager.debouncedReload();
+            }
+            break;
+          }
           if (request.action === 'delete') {
             const payload = request.payload as { agentId?: string; removeFiles?: boolean } | string | undefined;
             const agentId = typeof payload === 'string' ? payload : payload?.agentId;
@@ -881,6 +892,7 @@ interface GatewayCronJob {
   payload: { kind: string; message?: string; text?: string };
   delivery?: { mode: string; channel?: string; to?: string };
   sessionTarget?: string;
+  agentId?: string;
   state: {
     nextRunAtMs?: number;
     lastRunAtMs?: number;
@@ -929,6 +941,7 @@ function transformCronJob(job: GatewayCronJob) {
     updatedAt: new Date(job.updatedAtMs).toISOString(),
     lastRun,
     nextRun,
+    agentId: job.agentId,
   };
 }
 
@@ -995,6 +1008,7 @@ function registerCronHandlers(gatewayManager: GatewayManager): void {
     message: string;
     schedule: string;
     enabled?: boolean;
+    agentId?: string;
   }) => {
     try {
       const gatewayInput = {
@@ -1009,6 +1023,7 @@ function registerCronHandlers(gatewayManager: GatewayManager): void {
         // the Gateway from attempting channel delivery (which would fail
         // with "Channel is required" when no channels are configured).
         delivery: { mode: 'none' },
+        ...(input.agentId ? { agentId: input.agentId } : {}),
       };
       const result = await gatewayManager.rpc('cron.add', gatewayInput);
       // Transform the returned job to frontend format

@@ -4,6 +4,7 @@
  */
 import { Tray, Menu, BrowserWindow, app, nativeImage } from 'electron';
 import { join } from 'path';
+import { getSetting, setSetting } from '../utils/store';
 
 let tray: Tray | null = null;
 
@@ -20,7 +21,7 @@ function getIconsDir(): string {
 /**
  * Create system tray icon and menu
  */
-export function createTray(mainWindow: BrowserWindow): Tray {
+export async function createTray(mainWindow: BrowserWindow): Promise<Tray> {
   // Use platform-appropriate icon for system tray
   const iconsDir = getIconsDir();
   let iconPath: string;
@@ -65,7 +66,8 @@ export function createTray(mainWindow: BrowserWindow): Tray {
     mainWindow.focus();
   };
 
-  // Create context menu
+  // Create context menu (async to read persisted settings)
+  const closeToTray = await getSetting('closeToTray');
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Show ClawPlus',
@@ -83,6 +85,17 @@ export function createTray(mainWindow: BrowserWindow): Tray {
       type: 'checkbox',
       checked: true,
       enabled: false,
+    },
+    {
+      type: 'separator',
+    },
+    {
+      label: 'Close to Tray (Background)',
+      type: 'checkbox',
+      checked: closeToTray,
+      click: (menuItem) => {
+        void setSetting('closeToTray', menuItem.checked);
+      },
     },
     {
       type: 'separator',

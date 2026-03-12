@@ -86,6 +86,7 @@ const UNIFIED_CHANNELS = new Set<string>([
   'agent:create',
   'agent:delete',
   'agent:rename',
+  'agent:update',
   'agent:readSoul',
   'agent:writeSoul',
   'binding:list',

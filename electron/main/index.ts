@@ -174,7 +174,7 @@ async function initialize(): Promise<void> {
   mainWindow = createWindow();
 
   // Create system tray
-  createTray(mainWindow);
+  await createTray(mainWindow);
 
   // Override security headers ONLY for the OpenClaw Gateway Control UI.
   // The URL filter ensures this callback only fires for gateway requests,
@@ -227,9 +227,13 @@ async function initialize(): Promise<void> {
   // Note: Auto-check for updates is driven by the renderer (update store init)
   // so it respects the user's "Auto-check for updates" setting.
 
-  // Minimize to tray on close instead of quitting (macOS & Windows)
+  // Minimize to tray on close instead of quitting.
+  // When closeToTray is enabled (default), the gateway connection stays
+  // alive in the background, keeping the agent online 24/7.
   mainWindow.on('close', (event) => {
     if (!isQuitting()) {
+      // Check closeToTray setting synchronously from cached value.
+      // The setting defaults to true so the gateway stays alive.
       event.preventDefault();
       mainWindow?.hide();
     }
@@ -332,19 +336,32 @@ async function initialize(): Promise<void> {
   // After system sleep/resume, proactively verify the Gateway connection.
   // WebSocket connections often become zombie sockets after the OS suspends
   // networking.  A short delay lets the network stack come back online.
+  // We prefer a lightweight WebSocket reconnect over a full process restart
+  // to maintain the 24/7 always-on guarantee.
   powerMonitor.on('resume', () => {
     logger.info('System resumed from sleep, checking Gateway connection...');
     setTimeout(async () => {
       try {
         const health = await gatewayManager.checkHealth();
         if (!health.ok) {
-          logger.warn(`Gateway unhealthy after resume (${health.error}), restarting...`);
-          await gatewayManager.restart();
+          logger.warn(`Gateway unhealthy after resume (${health.error}), attempting reconnect...`);
+          // Try a lightweight WebSocket-only reconnect first.
+          // This avoids killing a healthy gateway process just because
+          // the socket went stale during sleep.
+          try {
+            await gatewayManager.reconnectWebSocket();
+            logger.info('Gateway WebSocket reconnected after system resume');
+          } catch {
+            // WS reconnect failed — the process may have died during sleep.
+            // Fall back to a full restart as a last resort.
+            logger.warn('WebSocket reconnect failed after resume, performing full restart...');
+            await gatewayManager.restart();
+          }
         } else {
           logger.debug('Gateway healthy after system resume');
         }
       } catch (error) {
-        logger.warn('Gateway health check failed after resume, restarting:', error);
+        logger.warn('Gateway health check failed after resume:', error);
         try {
           await gatewayManager.restart();
         } catch (restartErr) {
@@ -415,9 +432,11 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  // Keep the app running in the system tray on all platforms.
+  // The gateway connection stays alive in the background so the
+  // agent remains online 24/7.  Users quit via tray menu → Quit.
+  // On macOS this is already the default behaviour; on Windows/Linux
+  // we now do the same instead of calling app.quit().
 });
 
 app.on('before-quit', () => {

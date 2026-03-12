@@ -307,7 +307,12 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   enableSkill: async (skillId) => {
-    const { updateSkill } = get();
+    const { updateSkill, skills } = get();
+
+    const skill = skills.find((s) => s.id === skillId);
+    if (skill?.isBundled) {
+      throw new Error('Cannot toggle built-in skill');
+    }
 
     try {
       await useGatewayStore.getState().rpc('skills.update', { skillKey: skillId, enabled: true });
@@ -322,8 +327,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     const { updateSkill, skills } = get();
 
     const skill = skills.find((s) => s.id === skillId);
-    if (skill?.isCore) {
-      throw new Error('Cannot disable core skill');
+    if (skill?.isBundled) {
+      throw new Error('Cannot toggle built-in skill');
     }
 
     try {

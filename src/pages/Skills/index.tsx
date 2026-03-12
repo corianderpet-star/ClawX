@@ -193,7 +193,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall }: Sk
 
           <div className="space-y-7 px-1">
             {/* API Key Section */}
-            {!skill.isCore && (
+            {!skill.isCore && !skill.isBundled && (
               <div className="space-y-2">
                 <h3 className="text-[13px] font-bold flex items-center gap-2 text-foreground/80">
                   <Key className="h-3.5 w-3.5 text-blue-500" />
@@ -213,7 +213,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall }: Sk
             )}
 
             {/* Environment Variables Section */}
-            {!skill.isCore && (
+            {!skill.isCore && !skill.isBundled && (
               <div className="space-y-3">
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
@@ -289,7 +289,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall }: Sk
           
           {/* Centered Footer Buttons */}
           <div className="pt-8 pb-4 flex items-center justify-center gap-4 w-full px-2 max-w-[340px] mx-auto">
-            {!skill.isCore && (
+            {!skill.isCore && !skill.isBundled && (
               <Button 
                 onClick={handleSaveConfig} 
                 className={cn(
@@ -302,12 +302,12 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall }: Sk
               </Button>
             )}
             
-            {!skill.isCore && (
+            {!skill.isCore && !skill.isBundled && (
               <Button
                 variant="outline"
                 className="flex-1 h-[42px] text-[13px] rounded-full font-semibold shadow-sm bg-transparent border-black/20 dark:border-white/20 hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-foreground/80 hover:text-foreground"
                 onClick={() => {
-                  if (!skill.isBundled && onUninstall && skill.slug) {
+                  if (onUninstall && skill.slug) {
                     onUninstall(skill.slug);
                     onClose();
                   } else {
@@ -315,7 +315,7 @@ function SkillDetailDialog({ skill, isOpen, onClose, onToggle, onUninstall }: Sk
                   }
                 }}
               >
-                {!skill.isBundled && onUninstall 
+                {onUninstall 
                   ? 'Uninstall' 
                   : (skill.enabled ? t('detail.disable', 'Disable') : t('detail.enable', 'Enable'))}
               </Button>
@@ -410,7 +410,7 @@ export function Skills() {
   };
 
   const bulkToggleVisible = useCallback(async (enable: boolean) => {
-    const candidates = filteredSkills.filter((skill) => !skill.isCore && skill.enabled !== enable);
+    const candidates = filteredSkills.filter((skill) => !skill.isBundled && skill.enabled !== enable);
     if (candidates.length === 0) {
       toast.info(enable ? t('toast.noBatchEnableTargets') : t('toast.noBatchDisableTargets'));
       return;
@@ -750,7 +750,7 @@ export function Skills() {
                     <Switch
                       checked={skill.enabled}
                       onCheckedChange={(checked) => handleToggle(skill.id, checked)}
-                      disabled={skill.isCore}
+                      disabled={skill.isBundled}
                     />
                   </div>
                 </div>

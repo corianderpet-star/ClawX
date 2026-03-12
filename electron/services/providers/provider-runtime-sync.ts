@@ -6,6 +6,7 @@ import { getAllProviders, getApiKey, getDefaultProvider, getProvider } from '../
 import { getProviderConfig, getProviderDefaultModel } from '../../utils/provider-registry';
 import {
   removeProviderFromOpenClaw,
+  removeOpenClawProviderEntry,
   saveOAuthTokenToOpenClaw,
   saveProviderKeyToOpenClaw,
   setOpenClawDefaultModel,
@@ -18,7 +19,7 @@ import { logger } from '../../utils/logger';
 const GOOGLE_OAUTH_RUNTIME_PROVIDER = 'google-gemini-cli';
 const GOOGLE_OAUTH_DEFAULT_MODEL_REF = `${GOOGLE_OAUTH_RUNTIME_PROVIDER}/gemini-3-pro-preview`;
 const OPENAI_CODEX_RUNTIME_PROVIDER = 'openai-codex';
-const OPENAI_CODEX_DEFAULT_MODEL_REF = `${OPENAI_CODEX_RUNTIME_PROVIDER}/gpt-5.4-codex`;
+const OPENAI_CODEX_DEFAULT_MODEL_REF = `${OPENAI_CODEX_RUNTIME_PROVIDER}/gpt-5.4`;
 
 type RuntimeProviderSyncContext = {
   runtimeProviderKey: string;
@@ -337,6 +338,14 @@ export async function syncSavedProviderToRuntime(
 ): Promise<void> {
   const context = await syncProviderToRuntime(config, apiKey);
   if (!context) {
+    // Implicit OAuth provider (openai-codex, google-gemini-cli) — auth-profiles
+    // were updated but the Gateway still needs a restart to activate the provider.
+    const ock = await resolveRuntimeProviderKey(config);
+    scheduleGatewayRestart(
+      gatewayManager,
+      `Scheduling Gateway restart after saving implicit OAuth provider "${ock}" config`,
+      { onlyIfRunning: true },
+    );
     return;
   }
 
@@ -484,6 +493,7 @@ export async function syncDefaultProviderToRuntime(
     if (isCodexOAuthProvider) {
       const secret = await getProviderSecret(provider.id);
       if (secret?.type === 'oauth') {
+        // Store OAuth token under openai-codex provider (activates OpenClaw codex transport)
         await saveOAuthTokenToOpenClaw(OPENAI_CODEX_RUNTIME_PROVIDER, {
           access: secret.accessToken,
           refresh: secret.refreshToken,
@@ -493,17 +503,23 @@ export async function syncDefaultProviderToRuntime(
         });
       }
 
+      // Model references MUST use 'openai-codex' prefix — openai-codex is an independent
+      // implicit provider in OpenClaw with its own OAuth auth and synthetic model catalog.
+      // Using 'openai/' prefix would route to a completely separate provider that requires
+      // OPENAI_API_KEY, causing 401 errors.
       const modelOverride = provider.model
-        ? (provider.model.startsWith(`${OPENAI_CODEX_RUNTIME_PROVIDER}/`)
-          ? provider.model
-          : `${OPENAI_CODEX_RUNTIME_PROVIDER}/${provider.model}`)
+        ? (provider.model.includes('/') ? provider.model : `${OPENAI_CODEX_RUNTIME_PROVIDER}/${provider.model}`)
         : OPENAI_CODEX_DEFAULT_MODEL_REF;
 
       await setOpenClawDefaultModel(OPENAI_CODEX_RUNTIME_PROVIDER, modelOverride, fallbackModels);
+      // Clean up any stale models.providers.openai entry that could override the
+      // implicit openai-codex transport and cause 401 auth errors.
+      await removeOpenClawProviderEntry('openai');
       logger.info(`Configured openclaw.json for OpenAI Codex OAuth provider "${provider.id}"`);
-      scheduleGatewayReload(
+      scheduleGatewayRestart(
         gatewayManager,
-        `Reloading Gateway config after Codex OAuth provider switch to "${OPENAI_CODEX_RUNTIME_PROVIDER}"`,
+        `Restarting Gateway after Codex OAuth provider switch to "${OPENAI_CODEX_RUNTIME_PROVIDER}"`,
+        { onlyIfRunning: true },
       );
       return;
     }

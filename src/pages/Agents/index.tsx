@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bot, MessageSquare, Sparkles, ArrowRight, RefreshCw, AlertCircle, Plus, Trash2, FileText, FolderOpen, Network, LayoutGrid, GitBranch, Settings } from 'lucide-react';
+import { Bot, MessageSquare, Sparkles, ArrowRight, RefreshCw, AlertCircle, Plus, Trash2, FileText, FolderOpen, Network, LayoutGrid, GitBranch, Settings, Download } from 'lucide-react';
 import { useAgentsStore } from '@/stores/agents';
 import { useChatStore } from '@/stores/chat';
 import { useGatewayStore } from '@/stores/gateway';
@@ -20,6 +20,7 @@ import { CreateAgentDialog } from './CreateAgentDialog';
 import { EditSoulDialog } from './EditSoulDialog';
 import { AgentOrgChart } from './AgentOrgChart';
 import { AgentSettingsDialog } from './AgentSettingsDialog';
+import { ImportAgentDialog } from './ImportAgentDialog';
 
 export function Agents() {
   const { t } = useTranslation(['common', 'agents']);
@@ -40,6 +41,7 @@ export function Agents() {
   const switchAgent = useChatStore((s) => s.switchAgent);
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [agentToDelete, setAgentToDelete] = useState<{ id: string; name: string } | null>(null);
   const [soulEditAgent, setSoulEditAgent] = useState<{ id: string; name: string } | null>(null);
   const [settingsAgent, setSettingsAgent] = useState<string | null>(null);
@@ -112,6 +114,15 @@ export function Agents() {
           >
             <RefreshCw className={cn('h-4 w-4 mr-2', loading && 'animate-spin')} />
             {t('common:actions.refresh')}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowImportDialog(true)}
+            disabled={saving}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {t('agents:import.importAgent')}
           </Button>
           <Button
             size="sm"
@@ -314,6 +325,12 @@ export function Agents() {
       <CreateAgentDialog
         open={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}
+      />
+
+      {/* Import Agent Template Dialog */}
+      <ImportAgentDialog
+        open={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
       />
 
       {/* Delete Agent Confirmation */}

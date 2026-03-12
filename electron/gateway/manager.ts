@@ -29,7 +29,7 @@ import {
 import { dispatchJsonRpcNotification, dispatchProtocolEvent } from './event-dispatch';
 import { GatewayStateController } from './state';
 import { prepareGatewayLaunchContext } from './config-sync';
-import { connectGatewaySocket, waitForGatewayReady } from './ws-client';
+import { connectGatewaySocket, probeGatewayReady, waitForGatewayReady } from './ws-client';
 import {
   findExistingGatewayProcess,
   runOpenClawDoctorRepair,
@@ -461,6 +461,41 @@ export class GatewayManager extends EventEmitter {
   }
 
   /**
+   * Reconnect WebSocket only — without restarting the gateway process.
+   * Use this when the process is likely still running but the socket
+   * has become stale (e.g. after system sleep/resume).
+   * Throws if the WebSocket cannot be re-established.
+   */
+  async reconnectWebSocket(): Promise<void> {
+    logger.info('Attempting WebSocket-only reconnect (keeping gateway process alive)');
+
+    // Tear down old socket
+    if (this.ws) {
+      try { this.ws.terminate(); } catch { /* ignore */ }
+      this.ws = null;
+    }
+    this.connectionMonitor.clear();
+
+    // Check if the gateway process is actually reachable
+    const ready = await probeGatewayReady(this.status.port, 3000);
+    if (!ready) {
+      throw new Error('Gateway process not reachable for WebSocket reconnect');
+    }
+
+    this.setStatus({ state: 'reconnecting' });
+
+    try {
+      await this.connect(this.status.port);
+      this.startHealthCheck();
+      this.reconnectAttempts = 0;
+      logger.info('WebSocket-only reconnect succeeded');
+    } catch (error) {
+      logger.warn('WebSocket-only reconnect failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Clear all active timers
    */
   private clearAllTimers(): void {
@@ -526,16 +561,20 @@ export class GatewayManager extends EventEmitter {
       checkHealth: () => this.checkHealth(),
       onUnhealthy: (errorMessage) => {
         this.emit('error', new Error(errorMessage));
-        // If health check reveals a stale connection, tear it down and reconnect.
+        // If health check reveals a stale connection, tear it down and try
+        // a lightweight WebSocket-only reconnect first.
         if (errorMessage.includes('stale')) {
-          logger.warn('Health check detected stale connection, triggering reconnect');
+          logger.warn('Health check detected stale connection, attempting WebSocket-only reconnect');
           if (this.ws) {
             try { this.ws.terminate(); } catch { /* ignore */ }
             this.ws = null;
           }
           if (this.status.state === 'running') {
-            this.setStatus({ state: 'stopped' });
-            this.scheduleReconnect();
+            void this.reconnectWebSocket().catch(() => {
+              logger.warn('WebSocket-only reconnect after stale detection failed, scheduling full reconnect');
+              this.setStatus({ state: 'stopped' });
+              this.scheduleReconnect();
+            });
           }
         }
       },
@@ -738,8 +777,12 @@ export class GatewayManager extends EventEmitter {
           this.ws = null;
         }
         if (this.status.state === 'running') {
-          this.setStatus({ state: 'stopped' });
-          this.scheduleReconnect();
+          // Try WebSocket-only reconnect first to avoid killing the process
+          void this.reconnectWebSocket().catch(() => {
+            logger.warn('WebSocket-only reconnect after dead ping failed, scheduling full reconnect');
+            this.setStatus({ state: 'stopped' });
+            this.scheduleReconnect();
+          });
         }
       },
     });
@@ -779,7 +822,8 @@ export class GatewayManager extends EventEmitter {
 
     const { delay, nextAttempt, maxAttempts } = decision;
     this.reconnectAttempts = nextAttempt;
-    logger.warn(`Scheduling Gateway reconnect attempt ${nextAttempt}/${maxAttempts} in ${delay}ms`);
+    const attemptsLabel = Number.isFinite(maxAttempts) ? `${nextAttempt}/${maxAttempts}` : `#${nextAttempt}`;
+    logger.warn(`Scheduling Gateway reconnect attempt ${attemptsLabel} in ${delay}ms`);
 
     this.setStatus({
       state: 'reconnecting',
@@ -799,6 +843,17 @@ export class GatewayManager extends EventEmitter {
         return;
       }
       try {
+        // First try a lightweight WebSocket-only reconnect.
+        // This avoids killing a healthy gateway process when only the
+        // socket has dropped (e.g. transient network hiccup, sleep/resume).
+        try {
+          await this.reconnectWebSocket();
+          this.reconnectAttempts = 0;
+          return;
+        } catch {
+          logger.debug('WebSocket-only reconnect failed, falling back to full start()');
+        }
+
         // Use the guarded start() flow so reconnect attempts cannot bypass
         // lifecycle locking and accidentally start duplicate Gateway processes.
         await this.start();

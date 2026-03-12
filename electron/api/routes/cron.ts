@@ -13,6 +13,7 @@ interface GatewayCronJob {
   payload: { kind: string; message?: string; text?: string };
   delivery?: { mode: string; channel?: string; to?: string };
   sessionTarget?: string;
+  agentId?: string;
   state: {
     nextRunAtMs?: number;
     lastRunAtMs?: number;
@@ -51,6 +52,7 @@ function transformCronJob(job: GatewayCronJob) {
     updatedAt: new Date(job.updatedAtMs).toISOString(),
     lastRun,
     nextRun,
+    agentId: job.agentId,
   };
 }
 
@@ -98,7 +100,7 @@ export async function handleCronRoutes(
 
   if (url.pathname === '/api/cron/jobs' && req.method === 'POST') {
     try {
-      const input = await parseJsonBody<{ name: string; message: string; schedule: string; enabled?: boolean }>(req);
+      const input = await parseJsonBody<{ name: string; message: string; schedule: string; enabled?: boolean; agentId?: string }>(req);
       const result = await ctx.gatewayManager.rpc('cron.add', {
         name: input.name,
         schedule: { kind: 'cron', expr: input.schedule },
@@ -107,6 +109,7 @@ export async function handleCronRoutes(
         wakeMode: 'next-heartbeat',
         sessionTarget: 'isolated',
         delivery: { mode: 'none' },
+        ...(input.agentId ? { agentId: input.agentId } : {}),
       });
       sendJson(res, 200, result && typeof result === 'object' ? transformCronJob(result as GatewayCronJob) : result);
     } catch (error) {
@@ -127,6 +130,7 @@ export async function handleCronRoutes(
         patch.payload = { kind: 'agentTurn', message: patch.message };
         delete patch.message;
       }
+      // agentId is passed through as-is in the patch — Gateway accepts it directly
       sendJson(res, 200, await ctx.gatewayManager.rpc('cron.update', { id, patch }));
     } catch (error) {
       sendJson(res, 500, { success: false, error: String(error) });

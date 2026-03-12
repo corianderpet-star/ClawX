@@ -360,6 +360,30 @@ export async function removeProviderFromOpenClaw(provider: string): Promise<void
 }
 
 /**
+ * Remove only the `models.providers[provider]` entry from openclaw.json.
+ *
+ * This is a lightweight cleanup that does NOT touch auth-profiles or plugins.
+ * Use it to remove stale provider config entries that were written by mistake
+ * (e.g. an `openai` entry created when `openai-codex` should have been used).
+ */
+export async function removeOpenClawProviderEntry(provider: string): Promise<void> {
+  try {
+    const config = await readOpenClawJson();
+    const models = (config.models || {}) as Record<string, unknown>;
+    const providers = (models.providers || {}) as Record<string, unknown>;
+    if (providers[provider]) {
+      delete providers[provider];
+      models.providers = providers;
+      config.models = models;
+      await writeOpenClawJson(config);
+      console.log(`Removed stale models.providers.${provider} entry from openclaw.json`);
+    }
+  } catch (err) {
+    console.warn(`Failed to remove models.providers.${provider} from openclaw.json:`, err);
+  }
+}
+
+/**
  * Build environment variables object with all stored API keys
  * for passing to the Gateway process
  */

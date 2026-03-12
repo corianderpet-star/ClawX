@@ -50,6 +50,7 @@ import { invokeIpc } from '@/lib/api-client';
 import { useSettingsStore } from '@/stores/settings';
 import { hostApiFetch } from '@/lib/host-api';
 import { subscribeHostEvent } from '@/lib/host-events';
+import { ModelIdCombobox } from '@/components/ModelIdCombobox';
 
 function normalizeFallbackProviderIds(ids?: string[]): string[] {
   return Array.from(new Set((ids ?? []).filter(Boolean)));
@@ -512,10 +513,13 @@ function ProviderCard({
               {showModelIdField && (
                 <div className="space-y-1.5">
                   <Label className="text-[13px] text-muted-foreground">{t('aiProviders.dialog.modelId')}</Label>
-                  <Input
+                  <ModelIdCombobox
                     value={modelId}
-                    onChange={(e) => setModelId(e.target.value)}
+                    onChange={setModelId}
                     placeholder={typeInfo?.modelIdPlaceholder || 'provider/model-id'}
+                    providerType={account.vendorId}
+                    accountId={account.id}
+                    baseUrl={baseUrl || undefined}
                     className="h-[40px] rounded-xl font-mono text-[13px] bg-white dark:bg-[#1a1a19] border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm"
                   />
                 </div>
@@ -1066,14 +1070,16 @@ function AddProviderDialog({
                 {showModelIdField && (
                   <div className="space-y-2">
                     <Label htmlFor="modelId" className="text-[14px] font-bold text-foreground/80">{t('aiProviders.dialog.modelId')}</Label>
-                    <Input
+                    <ModelIdCombobox
                       id="modelId"
                       placeholder={typeInfo?.modelIdPlaceholder || 'provider/model-id'}
                       value={modelId}
-                      onChange={(e) => {
-                        setModelId(e.target.value);
+                      onChange={(v) => {
+                        setModelId(v);
                         setValidationError(null);
                       }}
+                      providerType={selectedType ?? undefined}
+                      baseUrl={baseUrl || undefined}
                       className="h-[44px] rounded-xl font-mono text-[13px] bg-white dark:bg-[#1a1a19] border-black/10 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-blue-500/50 shadow-sm"
                     />
                   </div>

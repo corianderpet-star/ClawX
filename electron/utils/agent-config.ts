@@ -66,6 +66,25 @@ export interface CreateAgentInput {
   requireMention?: boolean;
 }
 
+/** Fields that can be updated on an existing agent. */
+export interface UpdateAgentInput {
+  agentId: string;
+  name?: string;
+  description?: string;
+  model?: string;
+  tools?: {
+    profile?: string;
+    allow?: string[];
+    deny?: string[];
+  };
+  /** Per-agent skill allowlist. undefined = don't change; string[] = set allowlist; null = clear (all skills). */
+  skills?: string[] | null;
+  role?: 'lead' | 'sub';
+  allowCrossComm?: boolean;
+  requireMention?: boolean;
+  emoji?: string;
+}
+
 export interface AgentsConfig {
   defaults?: Record<string, unknown>;
   list?: AgentConfigEntry[];
@@ -259,6 +278,51 @@ export async function createAgent(input: CreateAgentInput): Promise<AgentConfigE
 
   logger.info('Agent workspace initialized', { agentId: id, workspace, agentDir });
 
+  return entry;
+}
+
+/**
+ * Update fields on an existing agent in openclaw.json.
+ * Only provided fields are overwritten; omitted fields stay as-is.
+ */
+export async function updateAgent(input: UpdateAgentInput): Promise<AgentConfigEntry> {
+  const { agentId, name, description, model, tools, skills, role, allowCrossComm, requireMention, emoji } = input;
+
+  const config = await readConfig();
+  if (!config.agents?.list || !Array.isArray(config.agents.list)) {
+    throw new Error('No agents configured');
+  }
+  const entry = config.agents.list.find((a) => a.id === agentId);
+  if (!entry) {
+    throw new Error(`Agent "${agentId}" not found`);
+  }
+
+  // Apply updates (only provided fields)
+  if (name !== undefined) {
+    entry.name = name.trim() || agentId;
+    if (entry.identity) entry.identity.name = entry.name;
+  }
+  if (description !== undefined) entry.description = description || undefined;
+  if (model !== undefined) entry.model = model || undefined;
+  if (tools !== undefined) entry.tools = tools;
+  // Per-agent skill allowlist: null = clear (all skills), string[] = set allowlist
+  if (skills !== undefined) {
+    if (skills === null) {
+      delete entry.skills;
+    } else {
+      (entry as Record<string, unknown>).skills = skills;
+    }
+  }
+  if (role !== undefined) entry.role = role;
+  if (typeof allowCrossComm === 'boolean') entry.allowCrossComm = allowCrossComm;
+  if (typeof requireMention === 'boolean') entry.requireMention = requireMention;
+  if (emoji !== undefined) {
+    if (!entry.identity) entry.identity = {};
+    entry.identity.emoji = emoji || undefined;
+  }
+
+  await writeConfig(config);
+  logger.info('Agent updated', { agentId, fields: Object.keys(input).filter((k) => k !== 'agentId') });
   return entry;
 }
 

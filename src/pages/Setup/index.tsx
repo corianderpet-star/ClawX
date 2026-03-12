@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import { invokeIpc } from '@/lib/api-client';
 import { hostApiFetch } from '@/lib/host-api';
 import { subscribeHostEvent } from '@/lib/host-events';
+import { ModelIdCombobox } from '@/components/ModelIdCombobox';
 interface SetupStep {
   id: string;
   title: string;
@@ -1189,16 +1190,16 @@ function ProviderContent({
           {showModelIdField && (
             <div className="space-y-2">
               <Label htmlFor="modelId">{t('provider.modelId')}</Label>
-              <Input
+              <ModelIdCombobox
                 id="modelId"
-                type="text"
                 placeholder={selectedProviderData?.modelIdPlaceholder || 'e.g. deepseek-ai/DeepSeek-V3'}
                 value={modelId}
-                onChange={(e) => {
-                  setModelId(e.target.value);
+                onChange={(v) => {
+                  setModelId(v);
                   onConfiguredChange(false);
                 }}
-                autoComplete="off"
+                providerType={selectedProvider ?? undefined}
+                baseUrl={baseUrl || undefined}
                 className="bg-background border-input"
               />
               <p className="text-xs text-muted-foreground">

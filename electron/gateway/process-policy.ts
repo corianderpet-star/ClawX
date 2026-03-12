@@ -5,9 +5,9 @@ export interface ReconnectConfig {
 }
 
 export const DEFAULT_RECONNECT_CONFIG: ReconnectConfig = {
-  maxAttempts: 10,
+  maxAttempts: Infinity,
   baseDelay: 1000,
-  maxDelay: 30000,
+  maxDelay: 60000,
 };
 
 export function nextLifecycleEpoch(currentEpoch: number): number {

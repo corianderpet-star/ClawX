@@ -104,7 +104,7 @@ Communicate with AI agents through a modern chat experience. Support for multipl
 
 ### 🤖 Multi-Agent Management
 
-Create, configure, and switch between multiple AI agents—each with its own model, skills, and SOUL.md personality definition. Supports a **company-style hierarchy** with lead/sub roles, visualized as an interactive **org-chart**. Manage agent names and channel bindings through a dedicated **Agent Settings** dialog. Assign specific agents to channels and cron tasks for fine-grained control.
+Create, configure, and switch between multiple AI agents—each with its own model, skills, and SOUL.md personality definition. Supports a **company-style hierarchy** with lead/sub roles, visualized as an interactive **org-chart**. Manage agent names, tool permissions, **per-agent skill allowlists**, and channel bindings through a sleek **glassmorphism settings dialog**. Quickly spin up preconfigured agents from **built-in templates** (Coding, Research, Writing, DevOps, Data, Creative) or **import** full agent configurations. Assign specific agents to channels and cron tasks for fine-grained control.
 
 ### 📡 Multi-Channel Management
 
@@ -332,6 +332,15 @@ pnpm package              # Package for current platform
 pnpm package:mac          # Package for macOS
 pnpm package:win          # Package for Windows
 pnpm package:linux        # Package for Linux
+```
+
+### Standalone Landing Page
+
+The repository also includes a standalone landing page project in `landing/`. It is a separate Vite app for marketing, launch, or website hero-page work and can be developed independently from the Electron desktop client.
+
+```bash
+pnpm --dir landing dev    # Start the landing page locally
+pnpm --dir landing build  # Build the landing page for deployment
 ```
 
 ### Tech Stack

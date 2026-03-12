@@ -18,9 +18,12 @@ import {
   syncUpdatedProviderToRuntime,
 } from '../../services/providers/provider-runtime-sync';
 import { validateApiKeyWithProvider } from '../../services/providers/provider-validation';
+import { fetchProviderModels } from '../../services/providers/model-list-fetcher';
 import { getProviderService } from '../../services/providers/provider-service';
 import { providerAccountToConfig } from '../../services/providers/provider-store';
 import type { ProviderAccount } from '../../shared/providers/types';
+import { getProviderSecret } from '../../services/secrets/secret-store';
+import { getApiKey } from '../../utils/secure-storage';
 import { logger } from '../../utils/logger';
 
 const legacyProviderRoutesWarned = new Set<string>();
@@ -39,6 +42,36 @@ export async function handleProviderRoutes(
       `[provider-migration] Legacy HTTP route "${route}" is deprecated. Prefer /api/provider-accounts endpoints.`,
     );
   };
+
+  if (url.pathname === '/api/provider-models' && req.method === 'GET') {
+    const providerType = url.searchParams.get('type') || '';
+    const accountId = url.searchParams.get('accountId') || '';
+    const baseUrl = url.searchParams.get('baseUrl') || undefined;
+    try {
+      let apiKey: string | undefined;
+      if (accountId) {
+        // Try new account-based secret store first
+        const secret = await getProviderSecret(accountId);
+        if (secret?.type === 'api_key') {
+          apiKey = secret.apiKey;
+        } else if (secret?.type === 'oauth') {
+          apiKey = secret.accessToken;
+        } else if (secret?.type === 'local') {
+          apiKey = secret.apiKey;
+        }
+        // Fall back to legacy secure-storage
+        if (!apiKey) {
+          apiKey = (await getApiKey(accountId)) ?? undefined;
+        }
+      }
+      const models = await fetchProviderModels(providerType, apiKey, baseUrl);
+      sendJson(res, 200, { models });
+    } catch (error) {
+      logger.warn(`[provider-models] Error fetching models for type=${providerType}: ${error}`);
+      sendJson(res, 200, { models: [] });
+    }
+    return true;
+  }
 
   if (url.pathname === '/api/provider-vendors' && req.method === 'GET') {
     sendJson(res, 200, await providerService.listVendors());
