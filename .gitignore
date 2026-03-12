@@ -7,6 +7,8 @@ node_modules/
 dist/
 dist-electron/
 release/
+release-portable-nsis/
+build-log*
 *.local
 
 # IDE

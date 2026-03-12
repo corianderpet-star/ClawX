@@ -12,6 +12,7 @@
   <a href="#features">Features</a> •
   <a href="#why-clawx">Why ClawPlus</a> •
   <a href="#getting-started">Getting Started</a> •
+  <a href="#portable-usb-mode">Portable USB</a> •
   <a href="#architecture">Architecture</a> •
   <a href="#development">Development</a> •
   <a href="#contributing">Contributing</a>
@@ -196,6 +197,66 @@ Notes:
 
 ---
 
+## Portable USB Mode
+
+ClawPlus supports a **portable mode** that keeps all application data (configuration, AI provider keys, session history, Python environment) on the same drive as the executable—ideal for USB drives or locked-down machines with no install privileges.
+
+### How It Works
+
+A `.portable` marker file in the application root activates portable mode at launch. All user data is stored in a `LocalData/` folder next to the executable instead of the default OS directories (`%APPDATA%` etc.).
+
+There are **two portable install types**, identified by the first line of the `.portable` file:
+
+| Type   | Marker Content | Description                                                    |
+| ------ | -------------- | -------------------------------------------------------------- |
+| `dir`  | `dir`          | Unpacked directory build. Updates via zip download + robocopy. |
+| `nsis` | `nsis`         | NSIS installer with portable flag. Uses standard NSIS updater. |
+
+### Getting a Portable Build
+
+#### Directory Portable (recommended for USB)
+
+```bash
+pnpm run package:portable
+```
+
+Produces a `win-unpacked/` folder with `.portable` (type `dir`), a `LocalData/` directory, and a `README-portable.txt`.
+
+#### NSIS Portable Installer
+
+```bash
+pnpm run package:portable:nsis
+# or, setting the env var directly:
+PORTABLE_BUILD=1 pnpm run package:win
+```
+
+Produces a standard `.exe` installer that detects the `.portable` marker at install time and keeps data local.
+
+### Portable Directory Layout
+
+```
+H:\ClawPlus\                      # USB root (example)
+├── ClawPlus.exe                  # Main executable
+├── .portable                     # Marker file (first line: dir or nsis)
+├── LocalData/                    # All user data lives here
+│   ├── config/                   # electron-store JSON configs
+│   ├── openclaw/                 # OpenClaw runtime data
+│   ├── python/                   # Bundled Python (auto-downloaded via uv)
+│   ├── logs/                     # Application logs
+│   └── cache/                    # Temp and cache data
+├── resources/                    # App resources
+└── ...                           # Other Electron files
+```
+
+### Online Updates (Portable)
+
+- **dir-portable**: The updater downloads a `.zip` from the CDN, extracts it to a staging area, then applies via `robocopy` on next restart—preserving `LocalData/` and the `.portable` marker.
+- **nsis-portable**: Uses the standard electron-updater NSIS flow; the installer script detects `.portable` and skips registry/PATH operations.
+
+> **Note**: Portable mode is currently Windows-only.
+
+---
+
 ## Architecture
 
 ClawPlus employs a **dual-process architecture** with a unified host API layer. The renderer talks to a single client abstraction, while Electron Main owns protocol selection and process lifecycle:
@@ -332,6 +393,10 @@ pnpm package              # Package for current platform
 pnpm package:mac          # Package for macOS
 pnpm package:win          # Package for Windows
 pnpm package:linux        # Package for Linux
+
+# Portable builds (Windows)
+pnpm run package:portable         # Dir-portable (unpacked folder)
+pnpm run package:portable:nsis    # NSIS-portable installer
 ```
 
 ### Standalone Landing Page
