@@ -15,9 +15,9 @@
  */
 import { readFile, writeFile, readdir, stat, mkdir, access, constants } from 'fs/promises';
 import { join, relative, sep } from 'path';
-import { homedir } from 'os';
 import { app } from 'electron';
 import { logger } from './logger';
+import { getOpenClawConfigDir } from './paths';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -71,7 +71,7 @@ type ProgressCallback = (progress: MigrationProgress) => void;
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-const OPENCLAW_DIR = join(homedir(), '.openclaw');
+const OPENCLAW_DIR = getOpenClawConfigDir();
 
 async function fileExists(p: string): Promise<boolean> {
   try {

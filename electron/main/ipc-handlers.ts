@@ -2405,7 +2405,7 @@ function mimeToExt(mimeType: string): string {
   return '';
 }
 
-const OUTBOUND_DIR = join(homedir(), '.openclaw', 'media', 'outbound');
+const OUTBOUND_DIR = join(getOpenClawConfigDir(), 'media', 'outbound');
 
 /**
  * Generate a preview data URL for image files.

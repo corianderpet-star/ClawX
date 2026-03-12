@@ -34,6 +34,7 @@
     "package": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder",
     "package:mac": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --mac",
     "package:win": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --win",
+    "package:portable": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --win dir && node scripts/portable-post-build.cjs",
     "package:linux": "vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --linux",
     "release": "pnpm run uv:download && vite build && zx scripts/bundle-openclaw.mjs && zx scripts/bundle-openclaw-plugins.mjs && electron-builder --publish always",
     "version:patch": "pnpm version patch",

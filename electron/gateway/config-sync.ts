@@ -11,6 +11,7 @@ import { syncGatewayTokenToConfig, syncBrowserConfigToOpenClaw, sanitizeOpenClaw
 import { buildProxyEnv, resolveProxySettings } from '../utils/proxy';
 import { syncProxyConfigToOpenClaw } from '../utils/openclaw-proxy';
 import { logger } from '../utils/logger';
+import { isPortableMode, getPortableChildEnv, getPortablePythonBinDir } from '../utils/portable';
 
 export interface GatewayLaunchContext {
   appSettings: Awaited<ReturnType<typeof getAllSettings>>;
@@ -145,6 +146,16 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     ? `${binPath}${path.delimiter}${process.env.PATH || ''}`
     : process.env.PATH || '';
 
+  // ── Portable mode: prepend portable Python to PATH ─────────────────────
+  let pathWithPortablePython = finalPath;
+  if (isPortableMode()) {
+    const pyBinDir = getPortablePythonBinDir();
+    if (pyBinDir) {
+      pathWithPortablePython = `${pyBinDir}${path.delimiter}${finalPath}`;
+      logger.info(`[Portable] Prepending portable Python to PATH: ${pyBinDir}`);
+    }
+  }
+
   const { providerEnv, loadedProviderKeyCount } = await loadProviderEnv();
   const { skipChannels, channelStartupSummary } = await resolveChannelStartupPolicy();
   const uvEnv = await getUvMirrorEnv();
@@ -155,12 +166,19 @@ export async function prepareGatewayLaunchContext(port: number): Promise<Gateway
     : 'disabled';
 
   const { NODE_OPTIONS: _nodeOptions, ...baseEnv } = process.env;
+
+  // ── Portable mode: inject HOME/USERPROFILE overrides ───────────────────
+  // This tricks the child process (OpenClaw) into writing ~/.openclaw data
+  // into <LocalData>/.openclaw on the USB drive instead of the real home dir.
+  const portableEnv = isPortableMode() ? getPortableChildEnv() : {};
+
   const forkEnv: Record<string, string | undefined> = {
     ...baseEnv,
-    PATH: finalPath,
+    PATH: pathWithPortablePython,
     ...providerEnv,
     ...uvEnv,
     ...proxyEnv,
+    ...portableEnv,
     OPENCLAW_GATEWAY_TOKEN: appSettings.gatewayToken,
     OPENCLAW_SKIP_CHANNELS: skipChannels ? '1' : '',
     CLAWDBOT_SKIP_CHANNELS: skipChannels ? '1' : '',

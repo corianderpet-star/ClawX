@@ -7,6 +7,13 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { existsSync, mkdirSync, readFileSync, realpathSync } from 'fs';
 import { logger } from './logger';
+import {
+  isPortableMode,
+  getPortableDataDir,
+  getPortableOpenClawConfigDir,
+  getPortableClawPlusConfigDir,
+  getPortableLogsDir,
+} from './portable';
 
 export {
   quoteForCmd,
@@ -17,10 +24,15 @@ export {
 } from './win-shell';
 
 /**
- * Expand ~ to home directory
+ * Expand ~ to home directory.
+ * In portable mode, ~ expands to the portable data directory so that
+ * workspace paths like `~/.openclaw/agents/...` resolve correctly.
  */
 export function expandPath(path: string): string {
   if (path.startsWith('~')) {
+    if (isPortableMode()) {
+      return path.replace('~', getPortableDataDir());
+    }
     return path.replace('~', homedir());
   }
   return path;
@@ -28,8 +40,10 @@ export function expandPath(path: string): string {
 
 /**
  * Get OpenClaw config directory
+ * In portable mode this resolves to <LocalData>/.openclaw
  */
 export function getOpenClawConfigDir(): string {
+  if (isPortableMode()) return getPortableOpenClawConfigDir();
   return join(homedir(), '.openclaw');
 }
 
@@ -42,15 +56,19 @@ export function getOpenClawSkillsDir(): string {
 
 /**
  * Get ClawPlus config directory
+ * In portable mode this resolves to <LocalData>/.clawx
  */
 export function getClawPlusConfigDir(): string {
+  if (isPortableMode()) return getPortableClawPlusConfigDir();
   return join(homedir(), '.clawx');
 }
 
 /**
  * Get ClawPlus logs directory
+ * In portable mode this resolves to <LocalData>/logs
  */
 export function getLogsDir(): string {
+  if (isPortableMode()) return getPortableLogsDir();
   return join(app.getPath('userData'), 'logs');
 }
 

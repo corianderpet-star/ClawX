@@ -1,6 +1,10 @@
 /**
  * Persistent Storage
  * Electron-store wrapper for application settings
+ *
+ * In portable mode, electron-store automatically picks up the redirected
+ * userData path (set by `app.setPath('userData', …)` in portable.ts),
+ * so the JSON config file lives under `<LocalData>/electron-userData/`.
  */
 
 import { randomBytes } from 'crypto';

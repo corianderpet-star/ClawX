@@ -6,11 +6,11 @@
 import { access, mkdir, readFile, writeFile, copyFile, rm } from 'fs/promises';
 import { constants, existsSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import { app } from 'electron';
 import { logger } from './logger';
+import { getOpenClawConfigDir } from './paths';
 
-const OPENCLAW_DIR = join(homedir(), '.openclaw');
+const OPENCLAW_DIR = getOpenClawConfigDir();
 const CONFIG_FILE = join(OPENCLAW_DIR, 'openclaw.json');
 
 // ── Types ────────────────────────────────────────────────────────

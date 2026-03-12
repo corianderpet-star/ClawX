@@ -8,9 +8,9 @@
  */
 import { app } from 'electron';
 import { existsSync, cpSync, mkdirSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { logger } from './logger';
+import { getOpenClawConfigDir } from './paths';
 
 export interface PluginInstallResult {
   installed: boolean;
@@ -32,7 +32,7 @@ function getPluginCandidateSources(pluginName: string): string[] {
 }
 
 function installPlugin(pluginName: string): PluginInstallResult {
-  const targetDir = join(homedir(), '.openclaw', 'extensions', pluginName);
+  const targetDir = join(getOpenClawConfigDir(), 'extensions', pluginName);
   const targetManifest = join(targetDir, 'openclaw.plugin.json');
 
   if (existsSync(targetManifest)) {
@@ -50,7 +50,7 @@ function installPlugin(pluginName: string): PluginInstallResult {
   }
 
   try {
-    mkdirSync(join(homedir(), '.openclaw', 'extensions'), { recursive: true });
+    mkdirSync(join(getOpenClawConfigDir(), 'extensions'), { recursive: true });
     rmSync(targetDir, { recursive: true, force: true });
     cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
 

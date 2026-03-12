@@ -6,6 +6,14 @@ import { app, BrowserWindow, nativeImage, net, powerMonitor, protocol, session, 
 import type { Server } from 'node:http';
 import { join } from 'path';
 import { pathToFileURL } from 'node:url';
+
+// ── Portable mode bootstrap (MUST run before app.whenReady) ──────────────────
+// Redirects all Electron data paths (userData, appData, logs …) to
+// <appRoot>/LocalData so that U-disk / portable deployments keep their data
+// on the same drive.
+import { initPortableMode } from '../utils/portable';
+initPortableMode();
+
 import { GatewayManager } from '../gateway/manager';
 import { registerIpcHandlers } from './ipc-handlers';
 import { createTray } from './tray';
