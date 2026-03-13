@@ -297,6 +297,46 @@
       "backgroundImage": "导出背景图片..."
     }
   },
+  "openclawUpdate": {
+    "title": "OpenClaw 运行时更新",
+    "description": "更新内置的 OpenClaw AI 运行时引擎",
+    "currentVersion": "当前版本",
+    "status": {
+      "checking": "正在检查 OpenClaw 更新...",
+      "downloading": "正在下载 OpenClaw 更新...",
+      "extracting": "正在解压更新包...",
+      "installing": "正在安装更新...",
+      "available": "发现新版本：v{{version}}",
+      "done": "OpenClaw 已更新成功",
+      "latest": "OpenClaw 已是最新版本",
+      "failed": "更新失败",
+      "check": "检查 OpenClaw 是否有可用更新"
+    },
+    "action": {
+      "checking": "检查中...",
+      "updating": "更新中...",
+      "update": "更新 OpenClaw",
+      "retry": "重试",
+      "check": "检查更新"
+    },
+    "restartHint": "建议重启应用以使新版本完全生效。",
+    "errorDetails": "错误详情：",
+    "riskWarning": {
+      "title": "更新须知",
+      "item1": "更新将替换 OpenClaw 运行时核心文件，进行中的对话可能会中断",
+      "item2": "如果更新涉及重大依赖变更，可能需要重新安装应用",
+      "item3": "建议在更新前保存重要对话记录"
+    },
+    "confirm": {
+      "title": "确认更新 OpenClaw",
+      "description": "将从 v{{current}} 更新到 v{{latest}}。此操作会替换 OpenClaw 运行时文件。",
+      "risk1": "更新过程中对话功能将暂时不可用",
+      "risk2": "核心文件将被覆盖，无法回退",
+      "risk3": "更新完成后建议重启应用",
+      "cancel": "取消",
+      "proceed": "确认更新"
+    }
+  },
   "about": {
     "title": "关于",
     "appName": "clawPlus",

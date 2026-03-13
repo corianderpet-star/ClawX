@@ -297,6 +297,46 @@
       "backgroundImage": "Exporting background image..."
     }
   },
+  "openclawUpdate": {
+    "title": "OpenClaw Runtime Update",
+    "description": "Update the built-in OpenClaw AI runtime engine",
+    "currentVersion": "Current Version",
+    "status": {
+      "checking": "Checking for OpenClaw updates...",
+      "downloading": "Downloading OpenClaw update...",
+      "extracting": "Extracting update package...",
+      "installing": "Installing update...",
+      "available": "New version available: v{{version}}",
+      "done": "OpenClaw updated successfully",
+      "latest": "OpenClaw is up to date",
+      "failed": "Update failed",
+      "check": "Check if OpenClaw updates are available"
+    },
+    "action": {
+      "checking": "Checking...",
+      "updating": "Updating...",
+      "update": "Update OpenClaw",
+      "retry": "Retry",
+      "check": "Check for Updates"
+    },
+    "restartHint": "Restart the app for the new version to take full effect.",
+    "errorDetails": "Error Details:",
+    "riskWarning": {
+      "title": "Important Notes",
+      "item1": "Updating will replace OpenClaw runtime core files; active conversations may be interrupted",
+      "item2": "Major dependency changes may require reinstalling the app",
+      "item3": "Save important conversations before updating"
+    },
+    "confirm": {
+      "title": "Confirm OpenClaw Update",
+      "description": "This will update from v{{current}} to v{{latest}}. OpenClaw runtime files will be replaced.",
+      "risk1": "Chat functionality will be temporarily unavailable during the update",
+      "risk2": "Core files will be overwritten and cannot be rolled back",
+      "risk3": "Restart the app after the update is complete",
+      "cancel": "Cancel",
+      "proceed": "Confirm Update"
+    }
+  },
   "about": {
     "title": "About",
     "appName": "clawPlus",

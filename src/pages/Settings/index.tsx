@@ -38,6 +38,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useGatewayStore } from '@/stores/gateway';
 import { useUpdateStore } from '@/stores/update';
 import { UpdateSettings } from '@/components/settings/UpdateSettings';
+import { OpenClawUpdateSettings } from '@/components/settings/OpenClawUpdateSettings';
 import {
   getGatewayWsDiagnosticEnabled,
   invokeIpc,
@@ -1111,6 +1112,20 @@ export function Settings() {
               }}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* OpenClaw Runtime Update */}
+      <Card className="order-2">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PackageCheck className="h-5 w-5" />
+            {t('openclawUpdate.title')}
+          </CardTitle>
+          <CardDescription>{t('openclawUpdate.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OpenClawUpdateSettings />
         </CardContent>
       </Card>
 

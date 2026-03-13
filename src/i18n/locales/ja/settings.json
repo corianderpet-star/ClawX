@@ -292,6 +292,46 @@
       "backgroundImage": "背景画像をエクスポート中..."
     }
   },
+  "openclawUpdate": {
+    "title": "OpenClaw ランタイム更新",
+    "description": "組み込みの OpenClaw AI ランタイムエンジンを更新",
+    "currentVersion": "現在のバージョン",
+    "status": {
+      "checking": "OpenClaw の更新を確認中...",
+      "downloading": "OpenClaw の更新をダウンロード中...",
+      "extracting": "更新パッケージを展開中...",
+      "installing": "更新をインストール中...",
+      "available": "新バージョンあり: v{{version}}",
+      "done": "OpenClaw が正常に更新されました",
+      "latest": "OpenClaw は最新です",
+      "failed": "更新に失敗しました",
+      "check": "OpenClaw の更新を確認"
+    },
+    "action": {
+      "checking": "確認中...",
+      "updating": "更新中...",
+      "update": "OpenClaw を更新",
+      "retry": "再試行",
+      "check": "更新を確認"
+    },
+    "restartHint": "新バージョンを完全に反映するには、アプリを再起動してください。",
+    "errorDetails": "エラー詳細：",
+    "riskWarning": {
+      "title": "更新に関する注意事項",
+      "item1": "更新により OpenClaw ランタイムのコアファイルが置き換わり、進行中の会話が中断される場合があります",
+      "item2": "依存関係の大幅な変更がある場合、アプリの再インストールが必要になることがあります",
+      "item3": "更新前に重要な会話を保存してください"
+    },
+    "confirm": {
+      "title": "OpenClaw の更新を確認",
+      "description": "v{{current}} から v{{latest}} に更新します。OpenClaw ランタイムファイルが置き換わります。",
+      "risk1": "更新中はチャット機能が一時的に利用できなくなります",
+      "risk2": "コアファイルは上書きされ、ロールバックできません",
+      "risk3": "更新完了後にアプリを再起動してください",
+      "cancel": "キャンセル",
+      "proceed": "更新を確認"
+    }
+  },
   "about": {
     "title": "バージョン情報",
     "appName": "clawPlus",
