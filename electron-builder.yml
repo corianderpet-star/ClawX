@@ -48,7 +48,7 @@ npmRebuild: false
 # Fallback: GitHub Releases (backup, used when OSS is unavailable)
 publish:
   - provider: generic
-    url: http://zgonline.top/latest
+    url: http://cdn.zgonline.top/release
     useMultipleRangeRequest: false
 
 # macOS Configuration
