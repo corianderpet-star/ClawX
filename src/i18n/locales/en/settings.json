@@ -345,5 +345,64 @@
     "version": "Version {{version}}",
     "docs": "Website",
     "github": "GitHub"
+  },
+  "automation": {
+    "title": "Automation",
+    "description": "Configure OpenClaw automation features: Hooks, Cron, Plugins, and more",
+    "versionRequired": "Requires OpenClaw v{{version}}+",
+    "upgradePrompt": "Current OpenClaw version ({{current}}) does not support this feature. Please upgrade to v{{required}}+.",
+    "versionUnknown": "OpenClaw version unknown. Some features may not be available.",
+    "hooks": {
+      "title": "Hooks",
+      "description": "Event-driven automation hooks for session events, commands, and webhooks",
+      "enabled": "Enable Hooks",
+      "enabledDesc": "Allow internal hooks and webhook endpoints",
+      "internalEnabled": "Internal Hooks",
+      "internalEnabledDesc": "Enable built-in event-driven hooks (session-memory, etc.)",
+      "webhookToken": "Webhook Token",
+      "webhookTokenDesc": "Shared secret for authenticating incoming webhook requests",
+      "webhookPath": "Webhook Path",
+      "webhookPathDesc": "Base URL path for webhook endpoints (default: /hooks)"
+    },
+    "cron": {
+      "title": "Cron Jobs",
+      "description": "Scheduled tasks and periodic agent invocations",
+      "enabled": "Enable Cron",
+      "enabledDesc": "Allow scheduled cron jobs to run automatically",
+      "maxConcurrent": "Max Concurrent Runs",
+      "maxConcurrentDesc": "Maximum number of cron jobs running simultaneously"
+    },
+    "plugins": {
+      "title": "Plugins",
+      "description": "Extend OpenClaw with custom plugins for channels, memory, and more",
+      "enabled": "Enable Plugins",
+      "enabledDesc": "Allow plugins to be loaded and executed"
+    },
+    "commands": {
+      "title": "Commands",
+      "description": "Command configuration for the OpenClaw runtime",
+      "restart": "Graceful Restart",
+      "restartDesc": "Enable commands.restart for config changes to trigger graceful reload"
+    },
+    "approvals": {
+      "title": "Approvals",
+      "description": "Workflow approval gates using the Lobster deterministic runtime",
+      "enabled": "Enable Approvals",
+      "enabledDesc": "Enable approval-based workflow gates (requires Lobster runtime)"
+    },
+    "reloadMode": {
+      "title": "Config Reload Mode",
+      "description": "How the Gateway handles configuration changes at runtime",
+      "off": "Off",
+      "offDesc": "No automatic reload; changes require manual restart",
+      "restart": "Restart",
+      "restartDesc": "Full Gateway restart when configuration changes",
+      "hot": "Hot Reload",
+      "hotDesc": "Apply config changes without restarting (SIGUSR1 on Unix, restart on Windows)",
+      "hybrid": "Hybrid",
+      "hybridDesc": "Hot reload for minor changes, restart for major ones"
+    },
+    "saved": "Automation settings saved",
+    "saveFailed": "Failed to save automation settings"
   }
 }

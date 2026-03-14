@@ -9,6 +9,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Normalize a PATH entry for comparison only.
+# Expands %VAR% references so that "%APPDATA%\npm" matches "C:\Users\...\npm".
+# The original (unexpanded) value is preserved separately for writing back.
 function Normalize-PathEntry {
   param([string]$Value)
 
@@ -16,10 +19,29 @@ function Normalize-PathEntry {
     return ''
   }
 
-  return $Value.Trim().Trim('"').TrimEnd('\').ToLowerInvariant()
+  $cleaned = $Value.Trim().Trim('"')
+  $expanded = [Environment]::ExpandEnvironmentVariables($cleaned)
+  return $expanded.TrimEnd('\').ToLowerInvariant()
 }
 
-$current = [Environment]::GetEnvironmentVariable('Path', 'User')
+# ── Read raw PATH from the registry WITHOUT expanding %VAR% references ──
+# Using direct registry API instead of [Environment]::GetEnvironmentVariable
+# to preserve REG_EXPAND_SZ type and unexpanded variable references.
+$current = ''
+$valueKind = [Microsoft.Win32.RegistryValueKind]::ExpandString
+
+$regKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $false)
+if ($null -ne $regKey) {
+  try {
+    $current = $regKey.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $valueKind = $regKey.GetValueKind('Path')
+  }
+  catch {
+    $current = ''
+  }
+  $regKey.Close()
+}
+
 $entries = @()
 if (-not [string]::IsNullOrWhiteSpace($current)) {
   $entries = $current -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
@@ -28,6 +50,7 @@ if (-not [string]::IsNullOrWhiteSpace($current)) {
 $target = Normalize-PathEntry $CliDir
 $seen = [System.Collections.Generic.HashSet[string]]::new()
 $nextEntries = New-Object System.Collections.Generic.List[string]
+$targetAlreadyPresent = $false
 
 foreach ($entry in $entries) {
   $normalized = Normalize-PathEntry $entry
@@ -35,54 +58,88 @@ foreach ($entry in $entries) {
     continue
   }
 
+  # Track whether the target was already in the PATH
   if ($normalized -eq $target) {
+    $targetAlreadyPresent = $true
     continue
   }
 
   if ($seen.Add($normalized)) {
+    # Preserve the original entry (may contain %VAR% references)
     $nextEntries.Add($entry.Trim().Trim('"'))
   }
 }
 
+# Determine if the PATH actually needs to change
+$duplicatesRemoved = ($entries.Count -gt ($nextEntries.Count + $(if ($targetAlreadyPresent) { 1 } else { 0 })))
 $status = 'already-present'
+
 if ($Action -eq 'add') {
-  if ($seen.Add($target)) {
-    $nextEntries.Add($CliDir)
+  $nextEntries.Add($CliDir)
+  if (-not $targetAlreadyPresent -or $duplicatesRemoved) {
     $status = 'updated'
   }
-} elseif ($entries.Count -ne $nextEntries.Count) {
-  $status = 'updated'
+}
+else {
+  # remove action
+  if ($targetAlreadyPresent -or $duplicatesRemoved) {
+    $status = 'updated'
+  }
 }
 
-$newPath = if ($nextEntries.Count -eq 0) { $null } else { $nextEntries -join ';' }
-[Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+# ── Only write to the registry when something actually changed ──
+# Skipping redundant writes avoids broadcasting WM_SETTINGCHANGE unnecessarily,
+# which can disrupt Explorer's environment variable expansion (e.g. nvm's
+# %NVM_SYMLINK% in the System PATH) and cause tools like npm to "disappear".
+if ($status -eq 'updated') {
+  $regKeyW = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  if ($null -eq $regKeyW) {
+    $regKeyW = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+  }
 
-Add-Type -Namespace OpenClaw -Name NativeMethods -MemberDefinition @"
-using System;
-using System.Runtime.InteropServices;
-public static class NativeMethods {
-  [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-  public static extern IntPtr SendMessageTimeout(
-    IntPtr hWnd,
-    int Msg,
-    IntPtr wParam,
-    string lParam,
-    int fuFlags,
-    int uTimeout,
-    out IntPtr lpdwResult
-  );
+  if ($nextEntries.Count -eq 0) {
+    try { $regKeyW.DeleteValue('Path', $false) } catch { }
+  }
+  else {
+    $newPath = $nextEntries -join ';'
+    # Preserve the original registry value kind (REG_EXPAND_SZ / REG_SZ).
+    # This prevents converting REG_EXPAND_SZ → REG_SZ which would permanently
+    # destroy %VAR% references (e.g. %APPDATA%\npm, %NVM_HOME%) in the PATH.
+    $regKeyW.SetValue('Path', $newPath, $valueKind)
+  }
+  $regKeyW.Close()
+
+  # ── Broadcast WM_SETTINGCHANGE so running programs pick up the change ──
+  # Wrapped in try/catch so a broadcast failure doesn't prevent the script
+  # from reporting success (the registry change is already committed).
+  try {
+    Add-Type -MemberDefinition @'
+      [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+      public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        int    Msg,
+        IntPtr wParam,
+        string lParam,
+        int    fuFlags,
+        int    uTimeout,
+        out IntPtr lpdwResult
+      );
+'@ -Name NativeMethods -Namespace OpenClaw
+
+    $result = [IntPtr]::Zero
+    [OpenClaw.NativeMethods]::SendMessageTimeout(
+      [IntPtr]0xffff,   # HWND_BROADCAST
+      0x001A,            # WM_SETTINGCHANGE
+      [IntPtr]::Zero,
+      'Environment',
+      0x0002,            # SMTO_ABORTIFHUNG
+      5000,
+      [ref]$result
+    ) | Out-Null
+  }
+  catch {
+    # Non-fatal: registry is already updated; change takes effect on next login.
+  }
 }
-"@
-
-$result = [IntPtr]::Zero
-[OpenClaw.NativeMethods]::SendMessageTimeout(
-  [IntPtr]0xffff,
-  0x001A,
-  [IntPtr]::Zero,
-  'Environment',
-  0x0002,
-  5000,
-  [ref]$result
-) | Out-Null
 
 Write-Output $status

@@ -17,6 +17,7 @@ import { Progress } from '@/components/ui/progress';
 import { invokeIpc } from '@/lib/api-client';
 import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useAutomationStore } from '@/stores/automation';
 
 interface OpenClawUpdateCheckResult {
   currentVersion: string;
@@ -50,6 +51,7 @@ export function OpenClawUpdateSettings() {
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState('');
   const [showConfirm, setShowConfirm] = useState(false);
+  const refreshAutomation = useAutomationStore((s) => s.refresh);
 
   // Load current version on mount
   useEffect(() => {
@@ -94,6 +96,8 @@ export function OpenClawUpdateSettings() {
               }
             })
             .catch(() => {});
+          // Refresh automation store so version-gated features are re-evaluated
+          refreshAutomation();
           break;
         case 'error':
           setStatus('error');
@@ -106,7 +110,7 @@ export function OpenClawUpdateSettings() {
     return () => {
       window.electron?.ipcRenderer?.off?.('openclaw:update-progress', handler);
     };
-  }, []);
+  }, [refreshAutomation]);
 
   const handleCheckUpdate = useCallback(async () => {
     setStatus('checking');

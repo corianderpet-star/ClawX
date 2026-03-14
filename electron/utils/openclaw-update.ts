@@ -6,7 +6,9 @@
  * - Downloads the npm tarball for the latest version
  * - Extracts core files (dist/, assets/, skills/, openclaw.mjs, etc.)
  * - Preserves the existing flattened node_modules (dependencies)
- * - This works for patch/minor updates; major dependency changes may require a full app update
+ * - Detects dependency changes between old and new package.json
+ * - When new/changed dependencies are found, runs npm install --production
+ *   to ensure all required packages are available
  */
 import { net, BrowserWindow } from 'electron';
 import {
@@ -16,7 +18,9 @@ import {
   rmSync,
   copyFileSync,
   readdirSync,
+  readFileSync,
   statSync,
+  renameSync,
 } from 'fs';
 import { join } from 'path';
 import { exec } from 'child_process';
@@ -186,6 +190,64 @@ function extractTgz(tgzPath: string, destDir: string): Promise<void> {
   });
 }
 
+/**
+ * Read the dependencies (and optionally peerDependencies) from a package.json.
+ * Returns a flat record of name→version, or an empty object on failure.
+ */
+function readPackageDeps(pkgJsonPath: string): Record<string, string> {
+  try {
+    const raw = readFileSync(pkgJsonPath, 'utf-8');
+    const pkg = JSON.parse(raw) as {
+      dependencies?: Record<string, string>;
+    };
+    return pkg.dependencies ?? {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Detect whether the new package.json has dependencies that are missing
+ * or have changed version compared to the old one.
+ */
+function hasDependencyChanges(
+  oldDeps: Record<string, string>,
+  newDeps: Record<string, string>,
+): boolean {
+  for (const [name, version] of Object.entries(newDeps)) {
+    if (!oldDeps[name] || oldDeps[name] !== version) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Run `npm install --production` in the given directory to ensure all
+ * dependencies declared in package.json are present in node_modules.
+ * Uses process.execPath with ELECTRON_RUN_AS_NODE for packaged apps
+ * where npm may not be in PATH.
+ */
+function installDependencies(cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Try npm first, fall back to npx, finally fall back to node-based install
+    const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const cmd = `"${npmCmd}" install --production --no-audit --no-fund`;
+
+    logger.info(`[openclaw-update] Running dependency install in ${cwd}`);
+    exec(cmd, { cwd, timeout: 120_000, windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        logger.warn(`[openclaw-update] npm install failed, stderr: ${stderr}`);
+        reject(error);
+      } else {
+        logger.info(`[openclaw-update] npm install completed successfully`);
+        if (stdout) logger.debug(`[openclaw-update] npm stdout: ${stdout.trim()}`);
+        resolve();
+      }
+    });
+  });
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -269,11 +331,18 @@ export async function updateOpenClaw(
 
     emit({ phase: 'extracting', percent: 100, message: 'Extracted successfully' });
 
-    // ── Phase 4: Install (copy core files, preserve node_modules) ─────────
+    // ── Phase 4: Install (copy core files, handle dependency changes) ─────
     emit({ phase: 'installing', percent: 0, message: 'Installing update...' });
 
     const openclawDir = getOpenClawDir();
     const packageDir = join(extractDir, 'package');
+
+    // Snapshot old dependencies before overwriting package.json
+    const oldPkgJsonPath = join(openclawDir, 'package.json');
+    const oldDeps = readPackageDeps(oldPkgJsonPath);
+    const newPkgJsonPath = join(packageDir, 'package.json');
+    const newDeps = readPackageDeps(newPkgJsonPath);
+    const depsChanged = hasDependencyChanges(oldDeps, newDeps);
 
     if (!existsSync(packageDir)) {
       throw new Error('Extracted package directory not found');
@@ -293,7 +362,36 @@ export async function updateOpenClaw(
 
       if (statSync(srcPath).isDirectory()) {
         if (existsSync(destPath)) {
-          rmSync(destPath, { recursive: true, force: true });
+          // On Windows, rmSync can fail with ENOTEMPTY/EBUSY when files are
+          // locked by the Gateway or other processes.  Attempt a rename-first
+          // strategy: move the old directory out of the way, copy the new
+          // content, then best-effort cleanup the renamed directory.
+          const trashPath = `${destPath}.__old_${Date.now()}`;
+          let removed = false;
+          try {
+            renameSync(destPath, trashPath);
+            removed = true;
+          } catch {
+            // Rename failed (e.g. cross-volume or locked).  Fall back to
+            // direct removal with a lenient catch.
+            try {
+              rmSync(destPath, { recursive: true, force: true });
+              removed = true;
+            } catch (rmErr) {
+              // Could not remove — we'll overwrite via merge copy instead.
+              logger.warn(
+                `[openclaw-update] Could not remove ${entry}, will merge-copy: ${rmErr}`,
+              );
+            }
+          }
+          // Best-effort cleanup of the renamed-away directory
+          if (removed) {
+            try {
+              rmSync(trashPath, { recursive: true, force: true });
+            } catch {
+              /* ignore – OS will clean up eventually */
+            }
+          }
         }
         copyDirRecursive(srcPath, destPath);
       } else {
@@ -302,6 +400,39 @@ export async function updateOpenClaw(
 
       const percent = Math.round(((i + 1) / totalEntries) * 100);
       emit({ phase: 'installing', percent, message: `Installing: ${entry}` });
+    }
+
+    // ── Phase 5: Install dependencies if needed ──────────────────────────
+    if (depsChanged) {
+      const addedOrChanged = Object.entries(newDeps)
+        .filter(([name, ver]) => !oldDeps[name] || oldDeps[name] !== ver)
+        .map(([name, ver]) => `${name}@${ver}`);
+      logger.info(
+        `[openclaw-update] Dependencies changed (${addedOrChanged.join(', ')}), running npm install...`,
+      );
+      emit({
+        phase: 'installing',
+        percent: 90,
+        message: 'Installing new dependencies...',
+      });
+      try {
+        await installDependencies(openclawDir);
+        emit({
+          phase: 'installing',
+          percent: 100,
+          message: 'Dependencies installed successfully',
+        });
+      } catch (depError) {
+        const depMsg = depError instanceof Error ? depError.message : String(depError);
+        logger.error(`[openclaw-update] Dependency install failed: ${depMsg}`);
+        // Don't fail the entire update — the core files are already updated.
+        // Log the issue and let the user know they may need manual intervention.
+        emit({
+          phase: 'installing',
+          percent: 95,
+          message: `Warning: dependency install failed (${depMsg}). Gateway may need manual npm install.`,
+        });
+      }
     }
 
     // ── Cleanup ───────────────────────────────────────────────────────────

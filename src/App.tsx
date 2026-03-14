@@ -12,6 +12,7 @@ import i18n from './i18n';
 import { applyGatewayTransportPreference } from './lib/api-client';
 import { applyThemeColor } from './lib/theme-colors';
 import { Agents } from './pages/Agents';
+import { Approvals } from './pages/Approvals';
 import { Channels } from './pages/Channels';
 import { Chat } from './pages/Chat';
 import { Cron } from './pages/Cron';
@@ -188,6 +189,7 @@ function App() {
             <Route path="/skills" element={<Skills />} />
             <Route path="/cron" element={<Cron />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/approvals" element={<Approvals />} />
             <Route path="/settings/*" element={<Settings />} />
           </Route>
         </Routes>

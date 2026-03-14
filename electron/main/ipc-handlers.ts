@@ -15,6 +15,7 @@ import {
 import { getOpenClawStatus, getOpenClawDir, getOpenClawConfigDir, getOpenClawSkillsDir, ensureDir } from '../utils/paths';
 import { getOpenClawCliCommand } from '../utils/openclaw-cli';
 import { checkOpenClawUpdate, updateOpenClaw } from '../utils/openclaw-update';
+import { readAutomationConfig, updateAutomationConfig, readConfigReloadMode, setConfigReloadMode, type AutomationConfig, type ConfigReloadMode } from '../utils/automation-config';
 import { getAllSettings, getSetting, resetSettings, setSetting, type AppSettings } from '../utils/store';
 import {
   saveProviderKeyToOpenClaw,
@@ -1662,6 +1663,62 @@ function registerOpenClawHandlers(gatewayManager: GatewayManager): void {
     } catch (error) {
       console.error('Failed to validate channel credentials:', error);
       return { success: false, valid: false, errors: [String(error)], warnings: [] };
+    }
+  });
+
+  // ==================== Automation Configuration Handlers ====================
+
+  // Read full automation configuration
+  ipcMain.handle('automation:getConfig', async () => {
+    try {
+      const config = await readAutomationConfig();
+      return { success: true, config };
+    } catch (error) {
+      logger.error('automation:getConfig failed', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Update automation configuration (partial merge)
+  ipcMain.handle('automation:updateConfig', async (_, updates: Partial<AutomationConfig>) => {
+    try {
+      const config = await updateAutomationConfig(updates);
+      // Trigger gateway reload if running
+      if (gatewayManager.getStatus().state !== 'stopped') {
+        logger.info('Scheduling Gateway reload after automation config update');
+        gatewayManager.debouncedReload();
+      }
+      return { success: true, config };
+    } catch (error) {
+      logger.error('automation:updateConfig failed', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Read config reload mode
+  ipcMain.handle('automation:getReloadMode', async () => {
+    try {
+      const mode = await readConfigReloadMode();
+      return { success: true, mode };
+    } catch (error) {
+      logger.error('automation:getReloadMode failed', error);
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Set config reload mode
+  ipcMain.handle('automation:setReloadMode', async (_, mode: ConfigReloadMode) => {
+    try {
+      await setConfigReloadMode(mode);
+      // Trigger gateway reload if running
+      if (gatewayManager.getStatus().state !== 'stopped') {
+        logger.info('Scheduling Gateway reload after reload mode change', { mode });
+        gatewayManager.debouncedReload();
+      }
+      return { success: true };
+    } catch (error) {
+      logger.error('automation:setReloadMode failed', error);
+      return { success: false, error: String(error) };
     }
   });
 }

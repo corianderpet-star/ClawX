@@ -19,11 +19,13 @@ import {
   Cpu,
   LayoutDashboard,
   Bot,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settings';
 import { useChatStore } from '@/stores/chat';
 import { useAgentsStore } from '@/stores/agents';
+import { useAutomationStore } from '@/stores/automation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -149,6 +151,13 @@ export function Sidebar() {
   const isMultiAgent = agents.length > 1;
   const currentAgent = agents.find((a) => a.id === currentAgentId);
 
+  const initAutomation = useAutomationStore((s) => s.init);
+  const approvalsVisible = useAutomationStore((s) => s.isFeatureVisible('approvals'));
+
+  useEffect(() => {
+    initAutomation();
+  }, [initAutomation]);
+
   // Filter sessions to current agent when multi-agent is active
   const filteredSessions = isMultiAgent
     ? sessions.filter((s) => s.key.startsWith(`agent:${currentAgentId}:`))
@@ -187,6 +196,9 @@ export function Sidebar() {
     { to: '/cron', icon: <Clock className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.cronTasks') },
     { to: '/dashboard', icon: <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.dashboard') },
     { to: '/agents', icon: <Bot className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.agents') },
+    ...(approvalsVisible
+      ? [{ to: '/approvals', icon: <ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} />, label: t('sidebar.approvals') }]
+      : []),
   ];
 
   return (

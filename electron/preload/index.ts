@@ -148,6 +148,11 @@ const electronAPI = {
         'migration:export',
         'migration:import',
         'migration:preview',
+        // Automation
+        'automation:getConfig',
+        'automation:updateConfig',
+        'automation:getReloadMode',
+        'automation:setReloadMode',
       ];
 
       if (validChannels.includes(channel)) {

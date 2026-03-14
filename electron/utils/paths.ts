@@ -107,11 +107,50 @@ export function getOpenClawDir(): string {
     const buildVer = readPackageVersion(join(buildDir, 'package.json'));
     const nmVer = readPackageVersion(join(nodeModulesDir, 'package.json'));
     if (buildVer && (!nmVer || buildVer >= nmVer)) {
-      return buildDir;
+      // Verify dist file integrity — after pnpm updates node_modules/openclaw,
+      // build/openclaw may hold a stale mix of old chunk files and a new entry.js.
+      // If critical imports are missing, fall back to node_modules.
+      if (isDistIntact(buildDir)) {
+        return buildDir;
+      }
+      logger.warn(
+        '[paths] build/openclaw dist integrity check failed (chunk files missing), ' +
+          'falling back to node_modules/openclaw. Run "pnpm run build" or ' +
+          '"zx scripts/bundle-openclaw.mjs" to rebuild.',
+      );
     }
   }
 
   return nodeModulesDir;
+}
+
+/**
+ * Light-weight integrity check for the bundled openclaw dist/ directory.
+ * Reads the first few import specifiers from dist/entry.js and verifies the
+ * referenced chunk files actually exist on disk. Returns false when the dist
+ * directory contains a mismatch of old and new build artefacts.
+ */
+function isDistIntact(openclawDir: string): boolean {
+  const entryPath = join(openclawDir, 'dist', 'entry.js');
+  if (!existsSync(entryPath)) return false;
+  try {
+    const content = readFileSync(entryPath, 'utf-8');
+    // Match relative import specifiers: from "./chunk-HASH.js"
+    const importRegex = /from\s+["']\.\/([^"']+)["']/g;
+    let match: RegExpExecArray | null;
+    let checked = 0;
+    while ((match = importRegex.exec(content)) !== null && checked < 5) {
+      const importedFile = match[1];
+      if (!existsSync(join(openclawDir, 'dist', importedFile))) {
+        logger.debug(`[paths] dist integrity: missing ${importedFile}`);
+        return false;
+      }
+      checked++;
+    }
+    return checked > 0; // entry.js must import at least one chunk
+  } catch {
+    return false;
+  }
 }
 
 /** Read the `version` field from a package.json, or return undefined. */

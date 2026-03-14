@@ -24,6 +24,7 @@ import {
   Network,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { useTranslation } from 'react-i18next';
 import { useAgentsStore, type CreateAgentInput } from '@/stores/agents';
 import { cn } from '@/lib/utils';
@@ -391,19 +392,10 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
                       {t('agents:form.requireMentionDesc', '在频道中只有被 @提及 时才会响应（推荐子智能体开启）')}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className={cn(
-                      'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
-                      formData.requireMention ? 'bg-primary' : 'bg-muted',
-                    )}
-                    onClick={() => setFormData({ ...formData, requireMention: !formData.requireMention })}
-                  >
-                    <span className={cn(
-                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform',
-                      formData.requireMention ? 'translate-x-4.5' : 'translate-x-0.5',
-                    )} />
-                  </button>
+                  <Switch
+                    checked={formData.requireMention}
+                    onCheckedChange={(v) => setFormData({ ...formData, requireMention: v })}
+                  />
                 </div>
               )}
 
@@ -419,19 +411,10 @@ export function CreateAgentDialog({ open, onClose, onCreated }: CreateAgentDialo
                       {t('agents:form.crossCommDesc', '允许下属智能体之间互相通信和协作')}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className={cn(
-                      'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
-                      formData.allowCrossComm ? 'bg-primary' : 'bg-muted',
-                    )}
-                    onClick={() => setFormData({ ...formData, allowCrossComm: !formData.allowCrossComm })}
-                  >
-                    <span className={cn(
-                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform',
-                      formData.allowCrossComm ? 'translate-x-4.5' : 'translate-x-0.5',
-                    )} />
-                  </button>
+                  <Switch
+                    checked={formData.allowCrossComm}
+                    onCheckedChange={(v) => setFormData({ ...formData, allowCrossComm: v })}
+                  />
                 </div>
               )}
 

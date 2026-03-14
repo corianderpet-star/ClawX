@@ -91,6 +91,10 @@ const UNIFIED_CHANNELS = new Set<string>([
   'agent:writeSoul',
   'binding:list',
   'binding:set',
+  'automation:getConfig',
+  'automation:updateConfig',
+  'automation:getReloadMode',
+  'automation:setReloadMode',
 ]);
 
 const customInvokers = new Map<Exclude<TransportKind, 'ipc'>, TransportInvoker>();

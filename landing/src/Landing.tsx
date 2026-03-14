@@ -47,7 +47,7 @@ import './styles/landing.css';
 const enterpriseWeChatServiceUrl = 'https://work.weixin.qq.com/kfid/kfcf8bd6e2b6e3758b8';
 const enterpriseWeChatServiceQrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(enterpriseWeChatServiceUrl)}&size=640&margin=0`;
 
-const DOWNLOAD_BASE = 'http://cdn.zgonline.top/release';
+const DOWNLOAD_BASE = 'http://qn.zgonline.top/release';
 
 /* fallback when alpha.yml fetch fails (e.g. CORS) */
 const FALLBACK_VERSION = '0.1.24-alpha.16';
@@ -73,10 +73,11 @@ interface ReleaseInfo {
 }
 
 function parseYaml(text: string): ReleaseInfo {
-  const version = text.match(/^version:\s*(.+)$/m)?.[1]?.trim() ?? '';
-  const releaseDate = text.match(/^releaseDate:\s*'?(.+?)'?$/m)?.[1]?.trim() ?? '';
+  const t = text.replace(/\r\n/g, '\n');
+  const version = t.match(/^version:\s*(.+)$/m)?.[1]?.trim() ?? '';
+  const releaseDate = t.match(/^releaseDate:\s*'?(.+?)'?$/m)?.[1]?.trim() ?? '';
   const files: ReleaseFile[] = [];
-  const fileBlocks = text.matchAll(/- url:\s*(.+)\n\s+sha512:\s*.+\n\s+size:\s*(\d+)/g);
+  const fileBlocks = t.matchAll(/- url:\s*(.+)\n\s+sha512:\s*.+\n\s+size:\s*(\d+)/g);
   for (const m of fileBlocks) {
     files.push({ url: m[1].trim(), size: Number(m[2]) });
   }

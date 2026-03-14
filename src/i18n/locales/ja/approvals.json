@@ -1,0 +1,19 @@
+{
+  "title": "承認",
+  "description": "Lobster 決定性ランタイムによる承認ワークフローの管理",
+  "versionRequired": "承認機能には OpenClaw v2026.3.12 以降が必要です",
+  "currentVersion": "現在のバージョン：v{{version}}",
+  "requiresVersion": "v2026.3.12+ が必要",
+  "notEnabled": "承認機能が有効になっていません",
+  "notEnabledDesc": "設定 → オートメーションで承認機能を有効にしてください",
+  "goToSettings": "設定へ移動",
+  "gatewayNotRunning": "Gateway が実行されていません。承認を管理するには Gateway を起動してください。",
+  "refresh": "更新",
+  "pending": "承認待ち",
+  "pendingDesc": "レビューと承認を待っているアクション",
+  "noPending": "承認待ちの項目はありません",
+  "history": "履歴",
+  "historyDesc": "解決済みの承認リクエスト",
+  "approve": "承認",
+  "deny": "拒否"
+}

@@ -11,6 +11,7 @@ import enSkills from './locales/en/skills.json';
 import enCron from './locales/en/cron.json';
 import enSetup from './locales/en/setup.json';
 import enAgents from './locales/en/agents.json';
+import enApprovals from './locales/en/approvals.json';
 
 // ZH
 import zhCommon from './locales/zh/common.json';
@@ -22,6 +23,7 @@ import zhSkills from './locales/zh/skills.json';
 import zhCron from './locales/zh/cron.json';
 import zhSetup from './locales/zh/setup.json';
 import zhAgents from './locales/zh/agents.json';
+import zhApprovals from './locales/zh/approvals.json';
 
 // JA
 import jaCommon from './locales/ja/common.json';
@@ -33,6 +35,7 @@ import jaSkills from './locales/ja/skills.json';
 import jaCron from './locales/ja/cron.json';
 import jaSetup from './locales/ja/setup.json';
 import jaAgents from './locales/ja/agents.json';
+import jaApprovals from './locales/ja/approvals.json';
 
 export const SUPPORTED_LANGUAGES = [
     { code: 'en', label: 'English' },
@@ -53,6 +56,7 @@ const resources = {
         cron: enCron,
         setup: enSetup,
         agents: enAgents,
+        approvals: enApprovals,
     },
     zh: {
         common: zhCommon,
@@ -64,6 +68,7 @@ const resources = {
         cron: zhCron,
         setup: zhSetup,
         agents: zhAgents,
+        approvals: zhApprovals,
     },
     ja: {
         common: jaCommon,
@@ -75,6 +80,7 @@ const resources = {
         cron: jaCron,
         setup: jaSetup,
         agents: jaAgents,
+        approvals: jaApprovals,
     },
 };
 
@@ -85,7 +91,7 @@ i18n
         lng: 'en', // will be overridden by settings store
         fallbackLng: 'en',
         defaultNS: 'common',
-        ns: ['common', 'settings', 'dashboard', 'chat', 'channels', 'skills', 'cron', 'setup', 'agents'],
+        ns: ['common', 'settings', 'dashboard', 'chat', 'channels', 'skills', 'cron', 'setup', 'agents', 'approvals'],
         interpolation: {
             escapeValue: false, // React already escapes
         },

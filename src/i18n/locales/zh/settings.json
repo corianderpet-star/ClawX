@@ -345,5 +345,64 @@
     "version": "版本 {{version}}",
     "docs": "官网",
     "github": "GitHub"
+  },
+  "automation": {
+    "title": "自动化",
+    "description": "配置 OpenClaw 自动化功能：Hooks、定时任务、插件等",
+    "versionRequired": "需要 OpenClaw v{{version}}+",
+    "upgradePrompt": "当前 OpenClaw 版本 ({{current}}) 不支持此功能，请升级至 v{{required}}+。",
+    "versionUnknown": "OpenClaw 版本未知，部分功能可能不可用。",
+    "hooks": {
+      "title": "Hooks",
+      "description": "基于事件的自动化钩子，用于会话事件、命令和 Webhook",
+      "enabled": "启用 Hooks",
+      "enabledDesc": "允许内部钩子和 Webhook 端点",
+      "internalEnabled": "内部 Hooks",
+      "internalEnabledDesc": "启用内置的事件驱动钩子（session-memory 等）",
+      "webhookToken": "Webhook 令牌",
+      "webhookTokenDesc": "用于验证传入 Webhook 请求的共享密钥",
+      "webhookPath": "Webhook 路径",
+      "webhookPathDesc": "Webhook 端点的基础 URL 路径（默认：/hooks）"
+    },
+    "cron": {
+      "title": "定时任务",
+      "description": "计划任务和定期 Agent 调用",
+      "enabled": "启用定时任务",
+      "enabledDesc": "允许定时任务自动执行",
+      "maxConcurrent": "最大并发数",
+      "maxConcurrentDesc": "同时运行的最大定时任务数量"
+    },
+    "plugins": {
+      "title": "插件",
+      "description": "通过自定义插件扩展 OpenClaw 的频道、记忆等功能",
+      "enabled": "启用插件",
+      "enabledDesc": "允许加载和执行插件"
+    },
+    "commands": {
+      "title": "命令",
+      "description": "OpenClaw 运行时的命令配置",
+      "restart": "优雅重启",
+      "restartDesc": "启用 commands.restart 以便配置更改时触发优雅重载"
+    },
+    "approvals": {
+      "title": "审批",
+      "description": "使用 Lobster 确定性运行时的工作流审批门控",
+      "enabled": "启用审批",
+      "enabledDesc": "启用基于审批的工作流门控（需要 Lobster 运行时）"
+    },
+    "reloadMode": {
+      "title": "配置重载模式",
+      "description": "Gateway 在运行时如何处理配置变更",
+      "off": "关闭",
+      "offDesc": "不自动重载；更改需要手动重启",
+      "restart": "重启",
+      "restartDesc": "配置变更时完整重启 Gateway",
+      "hot": "热重载",
+      "hotDesc": "不重启直接应用配置变更（Unix 上使用 SIGUSR1，Windows 降级为重启）",
+      "hybrid": "混合",
+      "hybridDesc": "小型变更使用热重载，重大变更使用重启"
+    },
+    "saved": "自动化设置已保存",
+    "saveFailed": "保存自动化设置失败"
   }
 }

@@ -39,6 +39,7 @@ import { useGatewayStore } from '@/stores/gateway';
 import { useUpdateStore } from '@/stores/update';
 import { UpdateSettings } from '@/components/settings/UpdateSettings';
 import { OpenClawUpdateSettings } from '@/components/settings/OpenClawUpdateSettings';
+import { AutomationSettings } from '@/components/settings/AutomationSettings';
 import {
   getGatewayWsDiagnosticEnabled,
   invokeIpc,
@@ -1112,6 +1113,20 @@ export function Settings() {
               }}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Automation */}
+      <Card className="order-2">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5" />
+            {t('automation.title')}
+          </CardTitle>
+          <CardDescription>{t('automation.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AutomationSettings />
         </CardContent>
       </Card>
 

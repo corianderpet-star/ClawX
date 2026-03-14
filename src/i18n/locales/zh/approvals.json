@@ -1,0 +1,19 @@
+{
+  "title": "审批",
+  "description": "管理由 Lobster 确定性运行时驱动的审批工作流",
+  "versionRequired": "审批功能需要 OpenClaw v2026.3.12 或更高版本",
+  "currentVersion": "当前版本：v{{version}}",
+  "requiresVersion": "需要 v2026.3.12+",
+  "notEnabled": "审批功能未开启",
+  "notEnabledDesc": "请在 设置 → 自动化 中启用审批功能",
+  "goToSettings": "前往设置",
+  "gatewayNotRunning": "Gateway 未运行，请先启动 Gateway 以管理审批。",
+  "refresh": "刷新",
+  "pending": "待审批",
+  "pendingDesc": "等待审核和批准的操作",
+  "noPending": "暂无待审批项",
+  "history": "审批历史",
+  "historyDesc": "已处理的审批请求记录",
+  "approve": "批准",
+  "deny": "拒绝"
+}

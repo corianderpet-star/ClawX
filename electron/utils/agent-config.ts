@@ -203,6 +203,8 @@ export async function createAgent(input: CreateAgentInput): Promise<AgentConfigE
     workspace,
     agentDir,
   };
+  if (name) configEntry.name = name.trim();
+  if (description) configEntry.description = description.trim();
   if (model) configEntry.model = model;
 
   // Multi-agent hierarchy fields

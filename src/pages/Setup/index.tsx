@@ -875,7 +875,7 @@ function ProviderContent({
   const [providerMenuOpen, setProviderMenuOpen] = useState(false);
   const providerMenuRef = useRef<HTMLDivElement | null>(null);
 
-  const [authMode, setAuthMode] = useState<'oauth' | 'apikey'>('oauth');
+  const [authMode, setAuthMode] = useState<'oauth' | 'apikey'>('apikey');
 
   // OAuth Flow State
   const [oauthFlowing, setOauthFlowing] = useState(false);
@@ -1234,7 +1234,10 @@ function ProviderContent({
     onApiKeyChange('');
     setKeyValid(null);
     setProviderMenuOpen(false);
-    setAuthMode('oauth');
+    // Default to API key mode for providers that support it (most common use case);
+    // OAuth-only providers (e.g., qwen-portal) will still show the OAuth flow.
+    const info = providers.find((p) => p.id === providerId);
+    setAuthMode(info?.supportsApiKey ? 'apikey' : 'oauth');
   };
 
   return (

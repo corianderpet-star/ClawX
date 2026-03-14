@@ -340,5 +340,64 @@
     "version": "バージョン {{version}}",
     "docs": "公式サイト",
     "github": "GitHub"
+  },
+  "automation": {
+    "title": "自動化",
+    "description": "OpenClaw 自動化機能の設定：Hooks、Cron、プラグインなど",
+    "versionRequired": "OpenClaw v{{version}}+ が必要",
+    "upgradePrompt": "現在の OpenClaw バージョン ({{current}}) はこの機能をサポートしていません。v{{required}}+ にアップグレードしてください。",
+    "versionUnknown": "OpenClaw バージョンが不明です。一部の機能が利用できない可能性があります。",
+    "hooks": {
+      "title": "Hooks",
+      "description": "セッションイベント、コマンド、Webhook のイベント駆動型自動化フック",
+      "enabled": "Hooks を有効化",
+      "enabledDesc": "内部フックと Webhook エンドポイントを許可",
+      "internalEnabled": "内部 Hooks",
+      "internalEnabledDesc": "組み込みのイベント駆動型フックを有効化（session-memory など）",
+      "webhookToken": "Webhook トークン",
+      "webhookTokenDesc": "受信 Webhook リクエストの認証用共有シークレット",
+      "webhookPath": "Webhook パス",
+      "webhookPathDesc": "Webhook エンドポイントのベース URL パス（デフォルト：/hooks）"
+    },
+    "cron": {
+      "title": "Cron ジョブ",
+      "description": "スケジュールされたタスクと定期的なエージェント呼び出し",
+      "enabled": "Cron を有効化",
+      "enabledDesc": "スケジュールされた Cron ジョブの自動実行を許可",
+      "maxConcurrent": "最大同時実行数",
+      "maxConcurrentDesc": "同時に実行する Cron ジョブの最大数"
+    },
+    "plugins": {
+      "title": "プラグイン",
+      "description": "チャンネル、メモリなどのカスタムプラグインで OpenClaw を拡張",
+      "enabled": "プラグインを有効化",
+      "enabledDesc": "プラグインの読み込みと実行を許可"
+    },
+    "commands": {
+      "title": "コマンド",
+      "description": "OpenClaw ランタイムのコマンド設定",
+      "restart": "グレースフルリスタート",
+      "restartDesc": "設定変更時にグレースフルリロードをトリガーする commands.restart を有効化"
+    },
+    "approvals": {
+      "title": "承認",
+      "description": "Lobster 決定論的ランタイムを使用したワークフロー承認ゲート",
+      "enabled": "承認を有効化",
+      "enabledDesc": "承認ベースのワークフローゲートを有効化（Lobster ランタイムが必要）"
+    },
+    "reloadMode": {
+      "title": "設定リロードモード",
+      "description": "Gateway が実行時に設定変更をどのように処理するか",
+      "off": "オフ",
+      "offDesc": "自動リロードなし。変更には手動再起動が必要",
+      "restart": "再起動",
+      "restartDesc": "設定変更時に Gateway を完全に再起動",
+      "hot": "ホットリロード",
+      "hotDesc": "再起動せずに設定変更を適用（Unix では SIGUSR1、Windows では再起動にフォールバック）",
+      "hybrid": "ハイブリッド",
+      "hybridDesc": "軽微な変更にはホットリロード、重大な変更には再起動"
+    },
+    "saved": "自動化設定が保存されました",
+    "saveFailed": "自動化設定の保存に失敗しました"
   }
 }

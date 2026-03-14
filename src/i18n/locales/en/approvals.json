@@ -1,0 +1,19 @@
+{
+  "title": "Approvals",
+  "description": "Manage approval workflows powered by Lobster deterministic runtime",
+  "versionRequired": "OpenClaw version 2026.3.12 or later is required for Approvals",
+  "currentVersion": "Current version: v{{version}}",
+  "requiresVersion": "Requires v2026.3.12+",
+  "notEnabled": "Approvals are not enabled",
+  "notEnabledDesc": "Enable approvals in Settings → Automation to use this feature",
+  "goToSettings": "Go to Settings",
+  "gatewayNotRunning": "Gateway is not running. Please start the Gateway to manage approvals.",
+  "refresh": "Refresh",
+  "pending": "Pending Approvals",
+  "pendingDesc": "Actions waiting for your review and approval",
+  "noPending": "No pending approvals",
+  "history": "History",
+  "historyDesc": "Previously resolved approval requests",
+  "approve": "Approve",
+  "deny": "Deny"
+}
