@@ -130,10 +130,7 @@ if (!openclawVirtualNM) {
 echo`   Virtual store root: ${openclawVirtualNM}`;
 queue.push({ nodeModulesDir: openclawVirtualNM, skipPkg: 'openclaw' });
 
-const SKIP_PACKAGES = new Set([
-  'typescript',
-  '@playwright/test',
-]);
+const SKIP_PACKAGES = new Set(['typescript', '@playwright/test']);
 const SKIP_SCOPES = ['@cloudflare/', '@types/'];
 let skippedDevCount = 0;
 
@@ -145,7 +142,7 @@ while (queue.length > 0) {
     // Skip the package that owns this virtual store entry (it's the package itself, not a dep)
     if (name === skipPkg) continue;
 
-    if (SKIP_PACKAGES.has(name) || SKIP_SCOPES.some(s => name.startsWith(s))) {
+    if (SKIP_PACKAGES.has(name) || SKIP_SCOPES.some((s) => name.startsWith(s))) {
       skippedDevCount++;
       continue;
     }
@@ -180,21 +177,70 @@ echo`   Skipped ${skippedDevCount} dev-only package references`;
 // openclaw directly, chalk@4 from a transitive dep), we keep the FIRST one
 // (direct dep version) and skip later duplicates. This prevents version
 // conflicts like CJS chalk@4 overwriting ESM chalk@5.
+//
+// EXCEPTION: When the first-encountered version is ESM-only (type:module with
+// no CJS export) and a later version IS CJS-compatible (has "main" or
+// "require" export), we replace the ESM-only copy. Electron's main process
+// uses CJS require(); ESM-only packages cause ERR_PACKAGE_PATH_NOT_EXPORTED.
 const outputNodeModules = path.join(OUTPUT, 'node_modules');
 fs.mkdirSync(outputNodeModules, { recursive: true });
 
-const copiedNames = new Set(); // Track package names already copied
+/**
+ * Check whether a package at `pkgPath` can be loaded via CJS require().
+ * Returns false for ESM-only packages (type:module with no require export).
+ */
+function isCjsCompatible(pkgPath) {
+  try {
+    const pkgJsonPath = path.join(pkgPath, 'package.json');
+    const raw = fs.readFileSync(normWin(pkgJsonPath), 'utf8');
+    const pkg = JSON.parse(raw);
+    // Has "main" field → CJS compatible
+    if (pkg.main) return true;
+    // Not type:module → CJS by default
+    if (pkg.type !== 'module') return true;
+    // type:module — check if exports provides a "require" condition
+    if (pkg.exports) {
+      const str = JSON.stringify(pkg.exports);
+      if (str.includes('"require"')) return true;
+    }
+    return false;
+  } catch {
+    return true; // can't read → assume OK
+  }
+}
+
+const copiedNames = new Map(); // Track package names -> { realPath, dest }
 let copiedCount = 0;
 let skippedDupes = 0;
+let replacedEsm = 0;
 
 for (const [realPath, pkgName] of collected) {
   if (copiedNames.has(pkgName)) {
-    skippedDupes++;
-    continue; // Keep the first version (closer to openclaw in dep tree)
+    // Check if the existing version is ESM-only and this one is CJS-compatible.
+    // If so, replace to avoid ERR_PACKAGE_PATH_NOT_EXPORTED at runtime.
+    const existing = copiedNames.get(pkgName);
+    if (!isCjsCompatible(existing.realPath) && isCjsCompatible(realPath)) {
+      try {
+        fs.rmSync(normWin(existing.dest), { recursive: true, force: true });
+        fs.mkdirSync(normWin(path.dirname(existing.dest)), { recursive: true });
+        fs.cpSync(normWin(realPath), normWin(existing.dest), {
+          recursive: true,
+          dereference: true,
+        });
+        copiedNames.set(pkgName, { realPath, dest: existing.dest });
+        replacedEsm++;
+        echo`   🔄 Replaced ESM-only ${pkgName} with CJS-compatible version`;
+      } catch (err) {
+        echo`   ⚠️  Failed to replace ${pkgName}: ${err.message}`;
+      }
+    } else {
+      skippedDupes++;
+    }
+    continue;
   }
-  copiedNames.add(pkgName);
 
   const dest = path.join(outputNodeModules, pkgName);
+  copiedNames.set(pkgName, { realPath, dest });
 
   try {
     fs.mkdirSync(normWin(path.dirname(dest)), { recursive: true });
@@ -220,7 +266,9 @@ function getDirSize(dir) {
       if (entry.isDirectory()) total += getDirSize(p);
       else if (entry.isFile()) total += fs.statSync(p).size;
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return total;
 }
 
@@ -237,7 +285,9 @@ function rmSafe(target) {
     if (stat.isDirectory()) fs.rmSync(target, { recursive: true, force: true });
     else fs.rmSync(target, { force: true });
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function cleanupBundle(outputDir) {
@@ -258,23 +308,46 @@ function cleanupBundle(outputDir) {
   if (fs.existsSync(ext)) {
     const JUNK_EXTS = new Set(['.prose', '.ignored_openclaw', '.keep']);
     const NM_REMOVE_DIRS = new Set([
-      'test', 'tests', '__tests__', '.github', 'docs', 'examples', 'example',
+      'test',
+      'tests',
+      '__tests__',
+      '.github',
+      'docs',
+      'examples',
+      'example',
     ]);
-    const NM_REMOVE_FILE_EXTS = ['.d.ts', '.d.ts.map', '.js.map', '.mjs.map', '.ts.map', '.markdown'];
+    const NM_REMOVE_FILE_EXTS = [
+      '.d.ts',
+      '.d.ts.map',
+      '.js.map',
+      '.mjs.map',
+      '.ts.map',
+      '.markdown',
+    ];
     const NM_REMOVE_FILE_NAMES = new Set([
-      '.DS_Store', 'README.md', 'CHANGELOG.md', 'LICENSE.md', 'CONTRIBUTING.md',
-      'tsconfig.json', '.npmignore', '.eslintrc', '.prettierrc', '.editorconfig',
+      '.DS_Store',
+      'README.md',
+      'CHANGELOG.md',
+      'LICENSE.md',
+      'CONTRIBUTING.md',
+      'tsconfig.json',
+      '.npmignore',
+      '.eslintrc',
+      '.prettierrc',
+      '.editorconfig',
     ]);
 
     // .md files inside skills/ directories are runtime content (SKILL.md,
     // block-types.md, etc.) and must NOT be removed.
-    const JUNK_MD_NAMES = new Set([
-      'README.md', 'CHANGELOG.md', 'LICENSE.md', 'CONTRIBUTING.md',
-    ]);
+    const JUNK_MD_NAMES = new Set(['README.md', 'CHANGELOG.md', 'LICENSE.md', 'CONTRIBUTING.md']);
 
     function walkExt(dir, insideNodeModules, insideSkills) {
       let entries;
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
@@ -284,13 +357,16 @@ function cleanupBundle(outputDir) {
             walkExt(
               full,
               insideNodeModules || entry.name === 'node_modules',
-              insideSkills || entry.name === 'skills',
+              insideSkills || entry.name === 'skills'
             );
           }
         } else if (entry.isFile()) {
           if (insideNodeModules) {
             const name = entry.name;
-            if (NM_REMOVE_FILE_NAMES.has(name) || NM_REMOVE_FILE_EXTS.some(e => name.endsWith(e))) {
+            if (
+              NM_REMOVE_FILE_NAMES.has(name) ||
+              NM_REMOVE_FILE_EXTS.some((e) => name.endsWith(e))
+            ) {
               if (rmSafe(full)) removedCount++;
             }
           } else {
@@ -312,17 +388,35 @@ function cleanupBundle(outputDir) {
   // --- node_modules: remove unnecessary file types and directories ---
   if (fs.existsSync(nm)) {
     const REMOVE_DIRS = new Set([
-      'test', 'tests', '__tests__', '.github', 'docs', 'examples', 'example',
+      'test',
+      'tests',
+      '__tests__',
+      '.github',
+      'docs',
+      'examples',
+      'example',
     ]);
     const REMOVE_FILE_EXTS = ['.d.ts', '.d.ts.map', '.js.map', '.mjs.map', '.ts.map', '.markdown'];
     const REMOVE_FILE_NAMES = new Set([
-      '.DS_Store', 'README.md', 'CHANGELOG.md', 'LICENSE.md', 'CONTRIBUTING.md',
-      'tsconfig.json', '.npmignore', '.eslintrc', '.prettierrc', '.editorconfig',
+      '.DS_Store',
+      'README.md',
+      'CHANGELOG.md',
+      'LICENSE.md',
+      'CONTRIBUTING.md',
+      'tsconfig.json',
+      '.npmignore',
+      '.eslintrc',
+      '.prettierrc',
+      '.editorconfig',
     ]);
 
     function walkClean(dir) {
       let entries;
-      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
       for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
@@ -333,7 +427,7 @@ function cleanupBundle(outputDir) {
           }
         } else if (entry.isFile()) {
           const name = entry.name;
-          if (REMOVE_FILE_NAMES.has(name) || REMOVE_FILE_EXTS.some(e => name.endsWith(e))) {
+          if (REMOVE_FILE_NAMES.has(name) || REMOVE_FILE_EXTS.some((e) => name.endsWith(e))) {
             if (rmSafe(full)) removedCount++;
           }
         }
@@ -533,7 +627,8 @@ function patchBundledRuntime(outputDir) {
     },
     {
       label: 'agent scope command runner',
-      target: () => findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^agent-scope-.*\.js$/),
+      target: () =>
+        findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^agent-scope-.*\.js$/),
       search: `\tconst child = spawn(resolvedCommand, finalArgv.slice(1), {
 \t\tstdio,
 \t\tcwd,
@@ -558,7 +653,8 @@ function patchBundledRuntime(outputDir) {
     },
     {
       label: 'chrome launcher',
-      target: () => findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^chrome-.*\.js$/),
+      target: () =>
+        findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^chrome-.*\.js$/),
       search: `\t\treturn spawn(exe.path, args, {
 \t\t\tstdio: "pipe",
 \t\t\tenv: {
@@ -577,7 +673,8 @@ function patchBundledRuntime(outputDir) {
     },
     {
       label: 'qmd runner',
-      target: () => findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^qmd-manager-.*\.js$/),
+      target: () =>
+        findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^qmd-manager-.*\.js$/),
       search: `\t\t\tconst child = spawn(resolveWindowsCommandShim(this.qmd.command), args, {
 \t\t\t\tenv: this.env,
 \t\t\t\tcwd: this.workspaceDir
@@ -590,7 +687,8 @@ function patchBundledRuntime(outputDir) {
     },
     {
       label: 'mcporter runner',
-      target: () => findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^qmd-manager-.*\.js$/),
+      target: () =>
+        findFirstFileByName(path.join(outputDir, 'dist', 'plugin-sdk'), /^qmd-manager-.*\.js$/),
       search: `\t\t\tconst child = spawn(resolveWindowsCommandShim("mcporter"), args, {
 \t\t\t\tenv: this.env,
 \t\t\t\tcwd: this.workspaceDir
@@ -630,7 +728,7 @@ function patchBundledRuntime(outputDir) {
 
   const ptyTargets = findFilesByName(
     path.join(outputDir, 'dist'),
-    /^(subagent-registry|reply|pi-embedded)-.*\.js$/,
+    /^(subagent-registry|reply|pi-embedded)-.*\.js$/
   );
   const ptyPatches = [
     {
@@ -698,6 +796,7 @@ echo`✅ Bundle complete: ${OUTPUT}`;
 echo`   Unique packages copied: ${copiedCount}`;
 echo`   Dev-only packages skipped: ${skippedDevCount}`;
 echo`   Duplicate versions skipped: ${skippedDupes}`;
+echo`   ESM-only replaced with CJS: ${replacedEsm}`;
 echo`   Total discovered: ${collected.size}`;
 echo`   openclaw.mjs: ${entryExists ? '✓' : '✗'}`;
 echo`   dist/entry.js: ${distExists ? '✓' : '✗'}`;
