@@ -86,7 +86,7 @@ Building AI agents shouldn't require mastering the command line. ClawPlus was de
 
 ### OpenClaw Inside
 
-ClawPlus is built directly upon the official **OpenClaw** core (currently bundled: **v2026.3.8**). Instead of requiring a separate installation, we embed the runtime within the application to provide a seamless "battery-included" experience.
+ClawPlus is built directly upon the official **OpenClaw** core (currently bundled: **v2026.3.13**). Instead of requiring a separate installation, we embed the runtime within the application to provide a seamless "battery-included" experience.
 
 We are committed to maintaining strict alignment with the upstream OpenClaw project, ensuring that you always have access to the latest capabilities, stability improvements, and ecosystem compatibility provided by the official releases.
 
